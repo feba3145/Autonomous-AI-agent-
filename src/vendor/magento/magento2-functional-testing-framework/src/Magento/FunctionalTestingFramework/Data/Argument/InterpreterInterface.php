@@ -1,0 +1,23 @@
+<?php
+/**
+ * Copyright 2017 Adobe
+ * All Rights Reserved.
+ */
+
+namespace Magento\FunctionalTestingFramework\Data\Argument;
+
+/**
+ * Interface that encapsulates complexity of expression computation
+ */
+interface InterpreterInterface
+{
+    /**
+     * Compute and return effective value of an argument
+     *
+     * @param array $data
+     * @return mixed
+     * @throws \InvalidArgumentException
+     * @throws \UnexpectedValueException
+     */
+    public function evaluate(array $data);
+}

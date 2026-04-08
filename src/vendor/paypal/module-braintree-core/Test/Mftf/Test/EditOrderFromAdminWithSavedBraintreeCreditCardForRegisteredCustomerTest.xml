@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+    <test name="EditOrderFromAdminWithSavedBraintreeCreditCardForRegisteredCustomerTest">
+        <annotations>
+            <features value="PayPal"/>
+            <stories value="Payment methods"/>
+            <title value="Edit Order From Admin With Saved Braintree Credit Card For Registered Customer Vault enabled"/>
+            <description value="Edit created order in backend with saved braintree credit card for registered customer"/>
+            <severity value="MAJOR"/>
+            <testCaseId value="AC-5126"/>
+            <group value="braintree"/>
+            <group value="3rd_party_integration" />
+        </annotations>
+        <before>
+            <!-- Create US Customer-->
+            <createData entity="Simple_US_Customer" stepKey="createCustomer"/>
+            <!--Create simple product-->
+            <createData entity="SimpleProduct" stepKey="createSimpleProduct"/>
+            <!--Login to admin-->
+            <actionGroup ref="AdminLoginActionGroup" stepKey="loginAsAdmin"/>
+            <!--Flush Cache-->
+            <actionGroup ref="CliCacheFlushActionGroup" stepKey="flushCache">
+                <argument name="tags" value="config full_page"/>
+            </actionGroup>
+            <!--Create order for registered customer-->
+            <actionGroup ref="LoginToStorefrontActionGroup" stepKey="loginAsCustomer">
+                <argument name="Customer" value="$$createCustomer$$" />
+            </actionGroup>
+            <!--Add simple product to shopping cart-->
+            <actionGroup ref="StorefrontOpenProductEntityPageActionGroup" stepKey="gotToProductPage">
+                <argument name="product" value="$$createSimpleProduct$$"/>
+            </actionGroup>
+            <actionGroup ref="StorefrontAddToTheCartActionGroup" stepKey="addProductToCart">
+                <argument name="product" value="$$createSimpleProduct$$"/>
+            </actionGroup>
+            <!--Navigate to checkout-->
+            <actionGroup ref="StorefrontOpenCheckoutPageActionGroup" stepKey="openCheckoutPage"/>
+            <!--Select flat rate shipping-->
+            <actionGroup ref="CheckoutSelectFlatRateShippingMethodActionGroup" stepKey="selectFlatRateShipping" />
+            <actionGroup ref="StorefrontCheckoutClickNextOnShippingStepActionGroup" stepKey="goToCheckoutPaymentPage"/>
+            <!--Click on Braintree credit card payment radio button-->
+            <waitForElementClickable selector="{{CheckoutPaymentSection.braintreeCreditCardRadio}}" stepKey="waitForBraintreeCCRadioButton"/>
+            <click selector="{{CheckoutPaymentSection.braintreeCreditCardRadio}}" stepKey="selectCreditCardPayment"/>
+            <!--Click on Magento Payments radio button -->
+            <actionGroup ref="StorefrontSelectPaymentServicesPaymentMethodActionGroup" stepKey="selectPaymentMethod">
+                <argument name="selector" value="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsBraintreeRadio}}"/>
+            </actionGroup>
+            <!--Fill credit card form and submit-->
+            <actionGroup ref="StorefrontFillPaymentServicesBraintreeCreditCardFormActionGroup" stepKey="fillCreditCardFormWithInvalidData">
+                <argument name="creditCard" value="PaymentsBraintreeCreditCard"/>
+            </actionGroup>
+            <!--Save credit card for the registered user-->
+            <checkOption selector="{{StorefrontOnePageCheckoutPaymentSection.saveForLaterUse}}" stepKey="checkSaveForLaterUse"/>
+            <waitForElementVisible selector="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsPlaceOrderButton}}" stepKey="waitPlaceOrderButton"/>
+            <click selector="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsPlaceOrderButton}}" stepKey="clickPlaceOrderButton"/>
+            <!--I see order successful page-->
+            <waitForLoadingMaskToDisappear stepKey="waitForLoadingMaskToDisappear"/>
+            <actionGroup ref="AssertStorefrontCheckoutSuccessActionGroup" stepKey="assertCheckoutSuccess"/>
+        </before>
+        <after>
+            <actionGroup ref="AdminOrdersPageOpenActionGroup" stepKey="navigateToSalesOrderPage"/>
+            <actionGroup ref="AdminClearFiltersActionGroup" stepKey="clickOnRemoveButtonToUnFiltersIfPresent"/>
+            <!--Delete Simple Product-->
+            <deleteData createDataKey="createSimpleProduct" stepKey="deleteSimpleProduct"/>
+            <!--Delete Customer-->
+            <deleteData createDataKey="createCustomer" stepKey="deleteCustomer"/>
+            <!--Logout Admin-->
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
+        </after>
+        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderLink}}" stepKey="captureOrderId"/>
+        <!--Navigate to Sales > Orders > view created order-->
+        <actionGroup ref="OpenOrderByIdActionGroup" stepKey="filterOrderGridById">
+            <argument name="orderId" value="{$captureOrderId}"/>
+        </actionGroup>
+        <!--Click edit button and confirm edit in modal window-->
+        <actionGroup ref="AdminEditOrderActionGroup" stepKey="openOrderForEdit">
+            <argument name="orderId" value="{$captureOrderId}"/>
+        </actionGroup>
+        <!--Select Stored Cards (Braintree) as a payment-->
+        <conditionalClick selector="{{AdminOrderFormPaymentSection.storedCardBraintree}}" dependentSelector="{{AdminOrderFormPaymentSection.storedCardBraintree}}" visible="true" stepKey="selectBrainTree"/>
+        <!--Click submit order button > "You created the order" success message appears-->
+        <waitForElementClickable selector="{{OrdersGridSection.submitOrder}}" stepKey="waitForSubmitButton" />
+        <click selector="{{OrdersGridSection.submitOrder}}" stepKey="submitOrder"/>
+        <waitForText userInput="You created the order." stepKey="seeSuccessMessageForOrder"/>
+        <!--Return to Order's grid and observe edited order-->
+        <actionGroup ref="FilterOrderGridByIdActionGroup" stepKey="filterOrderByIdAgain">
+            <argument name="orderId" value="{$captureOrderId}"/>
+        </actionGroup>
+        <!--Verify order status is canceled-->
+        <waitForElementClickable selector="{{AdminOrdersGridSection.secondRow}}" stepKey="waitForSecondRowToBePresent"/>
+        <click selector="{{AdminOrdersGridSection.secondRow}}" stepKey="clickSecondOrderRow"/>
+        <waitForPageLoad stepKey="waitForOrderPageLoad"/>
+        <waitForText stepKey="waitForOrderStatus" selector="{{AdminOrderDetailsInformationSection.orderStatus}}" userInput="Canceled"/>
+    </test>
+</tests>

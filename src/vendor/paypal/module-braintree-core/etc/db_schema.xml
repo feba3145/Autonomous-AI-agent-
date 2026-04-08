@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright 2024 Adobe
+ * All Rights Reserved.
+ */
+-->
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <!-- Magento Sales Order Table -->
+    <table name="sales_order">
+        <column xsi:type="varchar" name="dispute_status" length="45" nullable="true" comment="Braintree Dispute Status"/>
+    </table>
+    <table name="sales_order_grid">
+        <column xsi:type="varchar" name="dispute_status" length="45" nullable="true" comment="Braintree Dispute Status"/>
+    </table>
+    <table name="braintree_transaction_details" resource="sales" engine="innodb" comment="Braintree transaction details table">
+        <column xsi:type="int" name="entity_id" unsigned="true" nullable="false" identity="true" comment="Entity ID"/>
+        <column xsi:type="int" name="order_id" unsigned="true" nullable="false" identity="false" comment="Order Id"/>
+        <column xsi:type="text" name="transaction_source" nullable="true" comment="Transaction Source"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="entity_id"/>
+        </constraint>
+        <index referenceId="BRAINTREE_TRANSACTION_DETAILS_ORDER_ID" indexType="btree">
+            <column name="order_id"/>
+        </index>
+        <constraint xsi:type="foreign" referenceId="BRAINTREE_TRANSACTION_DETAILS_ORDER_ID_SALES_ORDER_ENTITY_ID"
+                    table="braintree_transaction_details" column="order_id" referenceTable="sales_order"
+                    referenceColumn="entity_id" onDelete="CASCADE"/>
+    </table>
+    <table name="braintree_credit_prices" resource="default" engine="innodb" comment="Braintree credit rates">
+        <column xsi:type="int" name="id" unsigned="true" nullable="false" identity="true" comment="Row ID"/>
+        <column xsi:type="int" name="product_id" unsigned="true" nullable="false" identity="false" comment="Product Id"/>
+        <column xsi:type="int" name="term" nullable="false" identity="false" comment="Credit Term"/>
+        <column xsi:type="decimal" name="monthly_payment" scale="2" precision="12" unsigned="false" nullable="false" comment="Monthly Payment"/>
+        <column xsi:type="decimal" name="instalment_rate" scale="2" precision="12" unsigned="false" nullable="false" comment="Instalment Rate"/>
+        <column xsi:type="decimal" name="cost_of_purchase" scale="2" precision="12" unsigned="false" nullable="false" comment="Cost of purchase"/>
+        <column xsi:type="decimal" name="total_inc_interest" scale="2" precision="12" unsigned="false" nullable="false" comment="Total Inc Interest"/>
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="id"/>
+        </constraint>
+        <index referenceId="BRAINTREE_CREDIT_PRICES_PRODUCT_ID" indexType="btree">
+            <column name="product_id"/>
+        </index>
+        <constraint xsi:type="unique" referenceId="BRAINTREE_CREDIT_PRICES_PRODUCT_ID_TERM">
+            <column name="product_id"/>
+            <column name="term"/>
+        </constraint>
+    </table>
+</schema>

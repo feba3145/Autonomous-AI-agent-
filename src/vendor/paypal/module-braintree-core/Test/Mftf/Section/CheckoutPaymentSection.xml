@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+    <section name="CheckoutPaymentSection">
+        <element name="braintreeCreditCardRadio" type="radio" selector="input#braintree.radio" timeout="30"/>
+        <element name="magentoPaymentServicesHostedFieldsBraintreeRadio" type="radio" selector="input#braintree" timeout="30"/>
+        <element name="magentoPaymentServicesHostedFieldsRadio" type="radio" selector="input#payment_services_paypal_hosted_fields" timeout="30"/>
+        <element name="magentoPaymentServicesHostedFieldsForm" type="block" selector="#hosted-fields-form"/>
+        <element name="magentoPaymentServicesPaymentOptionsHostedFieldsLockIcon" type="block" selector="#card-number .lock-icon title"/>
+        <element name="magentoPaymentServicesHostedFieldsCardNumberIframe" type="iframe" selector="braintree-hosted-field-number"/>
+        <element name="magentoPaymentServicesHostedFieldsCardNumber" type="input" selector="input#credit-card-number"/>
+        <element name="magentoPaymentServicesHostedFieldsCardNumberFieldElement" type="block" selector="[data-field-name='number']"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationIframe" type="iframe" selector="braintree-hosted-field-expirationDate"/>
+        <element name="magentoPaymentServicesHostedFieldsExpiration" type="input" selector="input#expiration"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationFieldElement" type="block" selector="[data-field-name='expirationDate']"/>
+        <element name="magentoPaymentServicesHostedFieldsCVVIframe" type="iframe" selector="braintree-hosted-field-cvv"/>
+        <element name="magentoPaymentServicesHostedFieldsCVV" type="input" selector="input#cvv"/>
+        <element name="magentoPaymentServicesHostedFieldsCVVFieldElement" type="block" selector="[data-field-name='cvv']"/>
+        <element name="magentoPaymentServicesHostedFieldsCVVFieldTooltipToggle" type="block" selector="[data-field-name='cvv'] .toggle"/>
+        <element name="magentoPaymentServicesHostedFieldsPlaceOrderButton" type="button" selector="div._active div.payment-method-content button.checkout"/>
+        <element name="magentoPaymentServicesHostedFieldsPlaceOrderButtonDisabled" type="button" selector="div._active div.payment-method-content button.checkout:disabled"/>
+        <element name="magentoPaymentServicesSmartButtonsRadio" type="radio" selector="input#payment_services_paypal_smart_buttons" timeout="30"/>
+        <element name="magentoPaymentServicesHostedFieldsErrorElement" type="block" selector=".field-error span"/>
+        <element name="magentoPaymentServicesHostedFieldsActiveCreditCardType" type="block" selector=".payment_services_paypal_hosted_fields .credit-card-types .item._active img[alt='{{type}}']" parameterized="true"/>
+        <element name="creditCardBraintree" type="text" selector="//span[@data-bind='text: getTitle()' and contains(text(),'Credit Card')]"/>
+        <element name="updatebtn" type="button" selector="//button[@class='action action-update']//span"/>
+        <element name="myBillingAddressSameAsShipping" type="checkbox" selector="//input[@name='billing-address-same-as-shipping']"/>
+        <element name="state" type="select" selector="//div[@class='billing-address-form']//select[@name='region_id']"/>
+        <element name="customerDetails" type="input" selector="//div[@class='billing-address-form']//input[@name='{{customerDetails}}']" parameterized="true"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationMonthIframe" type="iframe" selector="braintree-hosted-field-expirationMonth"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationMonth" type="input" selector="input#expiration-month"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationYearIframe" type="iframe" selector="braintree-hosted-field-expirationYear"/>
+        <element name="magentoPaymentServicesHostedFieldsExpirationYear" type="input" selector="input#expiration-year"/>
+        <element name="saveForLaterUse" type="radio" selector="#braintree_vault"/>
+        <element name="brainTreeManualCheckoutAgreementLink" type="button" selector="//input[starts-with(@id,'agreement_braintree')]/..//label//span"/>
+        <element name="brainTreeAutomaticCheckoutAgreementLink" type="button" selector="//input[starts-with(@id,'agreement_braintree')]/..//following-sibling::div//button//span"/>
+        <element name="paypalBraintreeRadio" type="radio" selector="#braintree_paypal"/>
+    </section>
+</sections>

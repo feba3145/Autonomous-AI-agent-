@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+        <!--
+         /**
+          * Copyright © Magento, Inc. All rights reserved.
+          * See COPYING.txt for license details.
+          */
+        -->
+
+<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
+    <entity name="SampleBraintreeCreditCardConfig" type="braintree_credit_card_config">
+        <data key="braintree_api_username">MagentoPB</data>
+        <data key="braintree_api_password">123123q</data>
+        <data key="braintree_merchantID">d4pdjhxgjfrsmzbf</data>
+        <data key="braintree_public_key">m7q4wmh43xrgyrst</data>
+        <data key="braintree_private_key">67de364080b1b4e2492d7a3de413a572</data>
+    </entity>
+    <entity name="PaymentsBraintreeCreditCard" type="payments_braintree_credit_card">
+        <data key="code">visa</data>
+        <data key="number">4111111111111111</data>
+        <data key="numberErrorMessage"/>
+        <data key="expirationDate">1025</data>
+        <data key="expirationMonth">10</data>
+        <data key="expirationYear">25</data>
+        <data key="expirationErrorMessage"/>
+        <data key="cvv">123</data>
+        <data key="cvvErrorMessage"/>
+    </entity>
+    <entity name="EnablePaymentForApplicableCountries">
+        <data key="path">payment/braintree/allowspecific</data>
+        <data key="label">Specific Countries</data>
+        <data key="value">1</data>
+        <data key="textValue">Specific Countries</data>
+    </entity>
+    <entity name="DisablePaymentForApplicableCountries">
+        <data key="path">payment/braintree/allowspecific</data>
+        <data key="label">All Allowed Countries</data>
+        <data key="value">0</data>
+        <data key="textValue">All Allowed Countries</data>
+    </entity>
+    <entity name="EnablePaymentForSpecificUnitedKingdomCountry">
+        <data key="path">payment/braintree/specificcountry</data>
+        <data key="label">Specific Countries</data>
+        <data key="value">GB</data>
+        <data key="textValue">Specific Countries</data>
+    </entity>
+    <entity name="DisplayBillingAddressPaymentPage">
+        <data key="path">checkout/options/display_billing_address_on</data>
+        <data key="label">Payment Page</data>
+        <data key="value">1</data>
+        <data key="textValue">Payment Page</data>
+    </entity>
+    <entity name="DisplayBillingAddressPaymentMethod">
+        <data key="path">checkout/options/display_billing_address_on</data>
+        <data key="label">Payment Method</data>
+        <data key="value">0</data>
+        <data key="textValue">Payment Method</data>
+    </entity>
+    <entity name="EnablePaypalInBraintreePayment">
+        <data key="path">payment/braintree_paypal/active</data>
+        <data key="value">1</data>
+    </entity>
+    <entity name="DisablePaypalInBraintreePayment">
+        <data key="path">payment/braintree_paypal/active</data>
+        <data key="value">0</data>
+    </entity>
+</entities>

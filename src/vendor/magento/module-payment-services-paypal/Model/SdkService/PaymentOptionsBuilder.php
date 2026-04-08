@@ -1,0 +1,258 @@
+<?php
+/**
+ * ADOBE CONFIDENTIAL
+ *
+ * Copyright 2021 Adobe
+ * All Rights Reserved.
+ *
+ * NOTICE: All information contained herein is, and remains
+ * the property of Adobe and its suppliers, if any. The intellectual
+ * and technical concepts contained herein are proprietary to Adobe
+ * and its suppliers and are protected by all applicable intellectual
+ * property laws, including trade secret and copyright laws.
+ * Dissemination of this information or reproduction of this material
+ * is strictly forbidden unless prior written permission is obtained
+ * from Adobe.
+ */
+declare(strict_types=1);
+
+namespace Magento\PaymentServicesPaypal\Model\SdkService;
+
+use Magento\Framework\DataObject;
+
+class PaymentOptionsBuilder extends DataObject
+{
+    public const HOSTED_FIELDS = 'hosted_fields';
+    public const CARD_FIELDS = 'card_fields';
+
+    private const BUTTONS = 'buttons';
+    private const ARE_BUTTONS_ENABLED = 'buttons_enabled';
+    private const IS_PAYPAL_CREDIT_ENABLED = 'paypal_credit';
+    private const IS_VENMO_ENABLED = 'venmo';
+    private const IS_CREDIT_CARD_ENABLED = 'credit_card';
+    private const CARD_FIELDS_TYPE = 'card_fields_type';
+    private const IS_APPLE_PAY_ENABLED = 'applepay';
+    private const IS_GOOGLE_PAY_ENABLED = 'googlepay';
+    private const IS_PAYPAL_CARD_ENABLED = 'card';
+    private const IS_PAYLATER_MESSAGE_ENABLED = 'paylater_message';
+    private const IS_FASTLANE_ENABLED = 'fastlane';
+    private const DOMAINS = 'domains';
+    private const IS_FASTLANE_3DS_ENABLED = 'three_ds';
+    private const ARE_APMS_ENABLED = 'apm_enabled';
+    private const APMS = 'apms';
+    private const SELECTED_APMS = 'selected_apms';
+
+    /**
+     * Set is smart buttons enabled.
+     *
+     * @param bool $areButtonsEnabled
+     * @return $this
+     */
+    public function setAreButtonsEnabled(bool $areButtonsEnabled)
+    {
+        return $this->setData(self::ARE_BUTTONS_ENABLED, $areButtonsEnabled);
+    }
+
+    /**
+     * Set is pay pal credit button enabled.
+     *
+     * @param bool $isPayPalCreditEnabled
+     * @return $this
+     */
+    public function setIsPayPalCreditEnabled(bool $isPayPalCreditEnabled)
+    {
+        return $this->setData(self::IS_PAYPAL_CREDIT_ENABLED, $isPayPalCreditEnabled);
+    }
+
+    /**
+     * Set is venmo button enabled.
+     *
+     * @param bool $isVenmoEnabled
+     * @return $this
+     */
+    public function setIsVenmoEnabled(bool $isVenmoEnabled)
+    {
+        return $this->setData(self::IS_VENMO_ENABLED, $isVenmoEnabled);
+    }
+
+    /**
+     * Set is credit card enabled.
+     *
+     * @param bool $isCreditCardEnabled
+     * @return $this
+     */
+    public function setIsCreditCardEnabled(bool $isCreditCardEnabled)
+    {
+        return $this->setData(self::IS_CREDIT_CARD_ENABLED, $isCreditCardEnabled);
+    }
+
+    /**
+     * Make sure we use hosted_fields.
+     *
+     * @return $this
+     */
+    public function useHostedFieldsForCreditCard()
+    {
+        return $this->setData(self::CARD_FIELDS_TYPE, self::HOSTED_FIELDS);
+    }
+
+    /**
+     * Make sure we use card_fields.
+     *
+     * @return $this
+     */
+    public function useCardFieldsForCreditCard()
+    {
+        return $this->setData(self::CARD_FIELDS_TYPE, self::CARD_FIELDS);
+    }
+
+    /**
+     * Set is Apple Pay enabled.
+     *
+     * @param bool $isApplePayEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsApplePayEnabled(bool $isApplePayEnabled)
+    {
+        return $this->setData(self::IS_APPLE_PAY_ENABLED, $isApplePayEnabled);
+    }
+
+    /**
+     * Set is Google Pay enabled.
+     *
+     * @param bool $isGooglePayEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsGooglePayEnabled(bool $isGooglePayEnabled)
+    {
+        return $this->setData(self::IS_GOOGLE_PAY_ENABLED, $isGooglePayEnabled);
+    }
+
+    /**
+     * Set is PayPal Card enabled.
+     *
+     * @param bool $isPayPalCardEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsPayPalCardEnabled(bool $isPayPalCardEnabled)
+    {
+        return $this->setData(self::IS_PAYPAL_CARD_ENABLED, $isPayPalCardEnabled);
+    }
+
+    /**
+     * Set is pay later message enabled.
+     *
+     * @param bool $isPaylaterMessageEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsPaylaterMessageEnabled(bool $isPaylaterMessageEnabled)
+    {
+        return $this->setData(self::IS_PAYLATER_MESSAGE_ENABLED, $isPaylaterMessageEnabled);
+    }
+
+    /**
+     * Set is Fastlane enabled.
+     *
+     * @param bool $isFastlaneEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsFastlaneEnabled(bool $isFastlaneEnabled)
+    {
+        return $this->setData(self::IS_FASTLANE_ENABLED, $isFastlaneEnabled);
+    }
+
+    /**
+     * Set domains.
+     *
+     * Used when generating sdk token for Fastlane
+     * Must be a root domain only:
+     *  - No subdomains such as sub.example.com.
+     *  - No wildcard characters such as *.example.com.
+     *  - No protocols such as http or https.
+     *
+     * @param array $domains
+     * @return PaymentOptionsBuilder
+     */
+    public function setDomains(array $domains)
+    {
+        return $this->setData(self::DOMAINS, $domains);
+    }
+
+    /**
+     * Set fastlane 3DS enabled then PayPal should render 'three-domain-secure' parameter in SDK params
+     *
+     * If it's enabled then 'three-domain-secure' will be
+     * Added in Sdk params as components for the fastlane
+     *
+     * @param bool $fastlaneThreeDS
+     * @return PaymentOptionsBuilder
+     */
+    public function setIsFastlaneThreeDSEnabled(bool $fastlaneThreeDS): PaymentOptionsBuilder
+    {
+        return $this->setData(self::IS_FASTLANE_3DS_ENABLED, $fastlaneThreeDS);
+    }
+
+    /**
+     * Set are APMs enabled.
+     *
+     * @param bool $areAPMsEnabled
+     * @return PaymentOptionsBuilder
+     */
+    public function setAreAPMsEnabled(bool $areAPMsEnabled): PaymentOptionsBuilder
+    {
+        return $this->setData(self::ARE_APMS_ENABLED, $areAPMsEnabled);
+    }
+
+    /**
+     * Set selected APMs
+     *
+     * @param array $selectedAPMs
+     * @return PaymentOptionsBuilder
+     */
+    public function setSelectedAPMs(array $selectedAPMs): PaymentOptionsBuilder
+    {
+        return $this->setData(self::SELECTED_APMS, $selectedAPMs);
+    }
+
+    /**
+     * Build result.
+     *
+     * @return array
+     */
+    public function build(): array
+    {
+        $result = [
+            self::IS_CREDIT_CARD_ENABLED =>
+                $this->getData(self::IS_CREDIT_CARD_ENABLED)
+                    ? [
+                        "enabled" => $this->getData(self::IS_CREDIT_CARD_ENABLED),
+                        "type" => $this->getData(self::CARD_FIELDS_TYPE) ?? self::HOSTED_FIELDS,
+                    ] : null,
+            self::IS_PAYLATER_MESSAGE_ENABLED => $this->getData(self::IS_PAYLATER_MESSAGE_ENABLED),
+            self::IS_GOOGLE_PAY_ENABLED => $this->getData(self::IS_GOOGLE_PAY_ENABLED),
+            self::IS_APPLE_PAY_ENABLED => $this->getData(self::IS_APPLE_PAY_ENABLED),
+            self::IS_FASTLANE_ENABLED => $this->getData(self::IS_FASTLANE_ENABLED)
+                ? [
+                    'enabled' => $this->getData(self::IS_FASTLANE_ENABLED),
+                    'three_ds' => $this->getData(self::IS_FASTLANE_3DS_ENABLED)
+                ] : null,
+        ];
+        if ($this->getData(self::ARE_BUTTONS_ENABLED)) {
+            $result[self::BUTTONS] = [
+                self::IS_PAYPAL_CARD_ENABLED => $this->getData(self::IS_PAYPAL_CARD_ENABLED),
+                self::IS_PAYPAL_CREDIT_ENABLED => $this->getData(self::IS_PAYPAL_CREDIT_ENABLED),
+                self::IS_VENMO_ENABLED => $this->getData(self::IS_VENMO_ENABLED),
+            ];
+        }
+        if ($result[self::IS_FASTLANE_ENABLED] && $this->getData(self::DOMAINS)) {
+            $result[self::DOMAINS] = $this->getData(self::DOMAINS);
+        }
+        if ($this->getData(self::ARE_APMS_ENABLED)) {
+            $result[self::APMS] = [
+                self::SELECTED_APMS => $this->getData(self::SELECTED_APMS)
+            ];
+        }
+
+        return $result;
+    }
+}

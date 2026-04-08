@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright 2020 Adobe
+ * All Rights Reserved.
+ */
+-->
+<page xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="urn:magento:framework:View/Layout/etc/page_configuration.xsd">
+    <body>
+        <referenceContainer name="product.info.main">
+            <block class="PayPal\Braintree\Block\Credit\Calculator\Product\View"
+                   name="braintree.credit"
+                   template="PayPal_Braintree::credit/product/view.phtml"
+                   before="product.info" />
+        </referenceContainer>
+        <!-- Simple Product -->
+        <referenceBlock name="product.info.addtocart">
+            <block name="product.info.addtocart.paypalButton"
+                   class="PayPal\Braintree\Block\Paypal\ProductPage"
+                   template="PayPal_Braintree::paypal/product_page.phtml"
+                   before="-" />
+        </referenceBlock>
+
+        <referenceContainer name="product.info.price">
+            <block class="PayPal\Braintree\Block\Paypal\ProductPage"
+                name="paypal.braintree.paylater.message"
+                template="PayPal_Braintree::paypal/messages/pdp.phtml"
+                after="-"
+            />
+        </referenceContainer>
+    </body>
+</page>

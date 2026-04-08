@@ -1,0 +1,19 @@
+build:
+    environment:
+        php:
+            version: 8.1
+    tests:
+        override:
+            - php-scrutinizer-run
+            - phpcs-run
+
+checks:
+    php:
+        code_rating: true
+        duplication: true
+
+filter:
+    paths: [ "src/*" ]
+
+tools:
+    external_code_coverage: true

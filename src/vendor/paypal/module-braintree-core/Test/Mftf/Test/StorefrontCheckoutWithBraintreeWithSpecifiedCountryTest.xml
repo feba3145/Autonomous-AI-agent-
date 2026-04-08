@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+    <test name="StorefrontCheckoutWithBraintreeWithSpecifiedCountryTest">
+        <annotations>
+            <features value="Braintree"/>
+            <stories value="Checkout with Braintree Credit Card"/>
+            <title value="Checkout with Braintree Credit Card with specific allowed countries"/>
+            <description value="Checkout with Braintree Credit Card with specific allowed countries and Display Billing Address On Payment Page"/>
+            <severity value="MAJOR"/>
+            <testCaseId value="AC-5193"/>
+            <group value="braintree"/>
+            <group value="3rd_party_integration"/>
+        </annotations>
+        <before>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="login"/>
+            <!--Change config in checkout section Display Billing Address On = Payment Page -->
+            <magentoCLI command="config:set {{DisplayBillingAddressPaymentPage.path}} {{DisplayBillingAddressPaymentPage.value}}" stepKey="displayBillingAddressPaymentPageUnderCheckoutSection"/>
+            <!-- Create Simple Product -->
+            <createData entity="simpleProductWithoutCategory" stepKey="createProduct">
+                <field key="price">100.00</field>
+            </createData>
+            <!-- Enable payment for specified uk country -->
+            <magentoCLI command="config:set {{EnablePaymentForApplicableCountries.path}} {{EnablePaymentForApplicableCountries.value}}" stepKey="enablePaymentForApplicableCountries"/>
+            <magentoCLI command="config:set {{EnablePaymentForSpecificUnitedKingdomCountry.path}} {{EnablePaymentForSpecificUnitedKingdomCountry.value}}" stepKey="enablePaymentForUnitedKingdomCountry"/>
+        </before>
+        <after>
+            <deleteData createDataKey="createProduct" stepKey="deleteProduct"/>
+            <!-- Change Display Billing Address To default -->
+            <magentoCLI command="config:set {{DisplayBillingAddressPaymentMethod.path}} {{DisplayBillingAddressPaymentMethod.value}}" stepKey="DisplayBillingAddressPaymentMethodUnderCheckoutSection"/>
+            <!-- Disable Braintree Payment for specified country -->
+            <magentoCLI command="config:set {{DisablePaymentForApplicableCountries.path}} {{DisablePaymentForApplicableCountries.value}}" stepKey="disablePaymentForApplicableCountries"/>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
+        </after>
+        <!-- Navigate to StoreFront -->
+        <actionGroup ref="StorefrontOpenHomePageActionGroup" stepKey="goToStoreFront"/>
+        <!-- Add product to cart -->
+        <actionGroup ref="AddSimpleProductToCartActionGroup" stepKey="addProductToCart">
+            <argument name="product" value="$$createProduct$$"/>
+        </actionGroup>
+        <actionGroup ref="StorefrontOpenCheckoutPageActionGroup" stepKey="goToCheckout"/>
+        <!--Fill Shipping Address-->
+        <actionGroup ref="GuestCheckoutFillingShippingSectionWithoutRegionActionGroup" stepKey="guestCheckoutFillingShippingSectionUK">
+            <argument name="customerVar" value="CustomerEntityOne"/>
+            <argument name="customerAddressVar" value="UK_Not_Default_Address"/>
+        </actionGroup>
+        <!--Verify Braintree Credit Card visible in Payment Page-->
+        <waitForText selector="{{CheckoutPaymentSection.creditCardBraintree}}" userInput="Credit Card" stepKey="customerVerifyBraintreeCreditCardVisible" />
+        <!--Update the address to US & update changes-->
+        <waitForElement selector="{{CheckoutPaymentSection.myBillingAddressSameAsShipping}}" stepKey="waitForEditbtn"/>
+        <uncheckOption selector="{{CheckoutPaymentSection.myBillingAddressSameAsShipping}}" stepKey="clickOnEditbtnToChangeShippingAddress"/>
+        <actionGroup ref="StorefrontFillUpdatedShippingAddressFormActionGroup" stepKey="editShippingAddress"/>
+        <click selector="{{CheckoutPaymentSection.updatebtn}}" stepKey="clickOnUpdatebtnToUpdateShippingAddress"/>
+        <waitForPageLoad stepKey="waitForShippingAddressToGetUpdate"/>
+        <!--Verify Braintree Credit Card is not visible after changing the address-->
+        <waitForElementNotVisible selector="{{CheckoutPaymentSection.creditCardBraintree}}" stepKey="verifyBraintreeCreditCardIsNotVisible"/>
+        <!-- Check My billing and shipping address are the same option -->
+        <checkOption selector="{{CheckoutPaymentSection.myBillingAddressSameAsShipping}}" stepKey="checkBillingAddressSameAsShippingCheckbox"/>
+        <!--Click on Braintree credit card payment radio button-->
+        <waitForElementClickable selector="{{CheckoutPaymentSection.braintreeCreditCardRadio}}" stepKey="waitForBraintreeCCRadioButton"/>
+        <click selector="{{CheckoutPaymentSection.braintreeCreditCardRadio}}" stepKey="selectCreditCardPayment"/>
+        <!--Click on Magento Payments radio button -->
+        <actionGroup ref="StorefrontSelectPaymentServicesPaymentMethodActionGroup" stepKey="selectPaymentMethod">
+            <argument name="selector" value="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsBraintreeRadio}}"/>
+        </actionGroup>
+        <!--Fill credit card form and submit-->
+        <actionGroup ref="StorefrontFillPaymentServicesBraintreeCreditCardFormActionGroup" stepKey="fillBrainTreeCreditCardDetails">
+            <argument name="creditCard" value="PaymentsBraintreeCreditCard"/>
+        </actionGroup>
+        <waitForElementClickable selector="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsPlaceOrderButton}}" stepKey="waitPlaceOrderButton"/>
+        <click selector="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsPlaceOrderButton}}" stepKey="clickPlaceOrderButton"/>
+        <waitForElementVisible selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="waitForOrderNumberToBeGrabbed"/>
+        <grabTextFrom selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="grabOrderNumber"/>
+        <waitForText selector="{{CheckoutSuccessMainSection.success}}" userInput="We'll email you an order confirmation with details and tracking info." stepKey="seeSuccessMessage"/>
+    </test>
+</tests>

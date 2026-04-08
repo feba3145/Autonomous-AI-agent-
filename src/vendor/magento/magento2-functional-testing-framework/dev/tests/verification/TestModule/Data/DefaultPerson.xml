@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+/**
+ * Copyright 2022 Adobe
+ * All Rights Reserved.
+ */
+-->
+
+<entities xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:mftf:DataGenerator/etc/dataProfileSchema.xsd">
+    <entity name="DefaultPerson" deprecated="Default Person">
+        <data key="firstname">test</data>
+        <data key="lastname"> bar</data>
+    </entity>
+</entities>

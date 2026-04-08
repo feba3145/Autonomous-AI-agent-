@@ -1,0 +1,32 @@
+{
+    "name": "duosecurity/duo_api_php",
+    "description": "A PHP implementation of the Duo API.",
+    "homepage": "https://duo.com/",
+    "support": {
+        "email": "support@duosecurity.com"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "1.1.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "DuoAPI\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Unit\\": "tests/Unit/"
+        }
+    },
+    "require": {
+        "php": ">=8.0",
+        "ext-curl": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "~9",
+        "php-coveralls/php-coveralls": "dev-master",
+        "squizlabs/php_codesniffer": "2.*"
+    }
+}

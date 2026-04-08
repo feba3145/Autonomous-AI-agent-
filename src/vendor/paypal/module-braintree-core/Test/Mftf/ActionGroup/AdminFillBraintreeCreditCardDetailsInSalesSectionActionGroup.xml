@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+
+<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
+    <actionGroup name="AdminFillBraintreeCreditCardDetailsInSalesSectionActionGroup" extends="StorefrontFillPaymentServicesBraintreeCreditCardFormActionGroup">
+        <annotations>
+            <description>Admin fill credit card expiration month and year separately in edit order page </description>
+        </annotations>
+        <remove keyForRemoval="waitForExpirationDateIFrame"/>
+        <remove keyForRemoval="switchToExpirationDateIFrame"/>
+        <remove keyForRemoval="waitForExpirationDateInput"/>
+        <remove keyForRemoval="triggerPressKeyEventOnExpirationDate"/>
+        <remove keyForRemoval="appendExpirationDate"/>
+        <remove keyForRemoval="waitForCVVIFrame"/>
+        <!-- Fill credit card expiration month -->
+        <waitForElement selector="[name='{{section.magentoPaymentServicesHostedFieldsExpirationMonthIframe}}']" after="switchOutFromCreditCardIframe" stepKey="waitForExpirationMonthIFrame"/>
+        <switchToIFrame selector="{{section.magentoPaymentServicesHostedFieldsExpirationMonthIframe}}" after="waitForExpirationMonthIFrame" stepKey="switchToExpirationMonthIFrame"/>
+        <waitForElement selector="{{section.magentoPaymentServicesHostedFieldsExpirationMonth}}" after="switchToExpirationMonthIFrame" stepKey="waitForExpirationMonthInput"/>
+        <pressKey selector="{{section.magentoPaymentServicesHostedFieldsExpirationMonth}}" parameterArray="[\Facebook\WebDriver\WebDriverKeys::BACKSPACE]" after="waitForExpirationMonthInput" stepKey="triggerPressKeyEventOnExpirationMonth"/>
+        <fillField userInput="{{creditCard.expirationMonth}}" selector="{{section.magentoPaymentServicesHostedFieldsExpirationMonth}}" after="triggerPressKeyEventOnExpirationMonth" stepKey="appendExpirationMonth"/>
+        <switchToIFrame after="appendExpirationMonth" stepKey="switchOutFromExpirationMonthIframe"/>
+        <!-- Fill credit card expiration Year -->
+        <waitForElement selector="[name='{{section.magentoPaymentServicesHostedFieldsExpirationYearIframe}}']" after="switchOutFromExpirationMonthIframe" stepKey="waitForExpirationYearIFrame"/>
+        <switchToIFrame selector="{{section.magentoPaymentServicesHostedFieldsExpirationYearIframe}}" after="waitForExpirationYearIFrame" stepKey="switchToExpirationYearIFrame"/>
+        <waitForElement selector="{{section.magentoPaymentServicesHostedFieldsExpirationYear}}" after="switchToExpirationYearIFrame" stepKey="waitForExpirationYearInput"/>
+        <pressKey selector="{{section.magentoPaymentServicesHostedFieldsExpirationYear}}" parameterArray="[\Facebook\WebDriver\WebDriverKeys::BACKSPACE]" after="waitForExpirationYearInput" stepKey="triggerPressKeyEventOnExpirationYear"/>
+        <fillField userInput="{{creditCard.expirationYear}}" selector="{{section.magentoPaymentServicesHostedFieldsExpirationYear}}" after="triggerPressKeyEventOnExpirationYear" stepKey="appendExpirationYear"/>
+        <switchToIFrame after="appendExpirationYear" stepKey="switchOutFromExpirationYearIframe"/>
+    </actionGroup>
+</actionGroups>

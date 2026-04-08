@@ -1,0 +1,69 @@
+<?php
+// @codingStandardsIgnoreFile
+use Magento\Framework\Escaper;
+use PayPal\Braintree\Block\Adminhtml\System\Config\Preview;
+use Magento\Framework\View\Helper\SecureHtmlRenderer;
+
+/** @var Preview $block */
+/** @var Escaper $escaper */
+/** @var SecureHtmlRenderer $secureRenderer */
+try {
+    $paypalId = sprintf('paypal-%s-%d', $block->getContainerId(), random_int(PHP_INT_MIN, PHP_INT_MAX));
+    $paypalCreditId = sprintf('credit-%s-%d', $block->getContainerId(), random_int(PHP_INT_MIN, PHP_INT_MAX));
+    $paypalPayLaterId = sprintf('paylater-%s-%d', $block->getContainerId(), random_int(PHP_INT_MIN, PHP_INT_MAX));
+} catch (Exception $e) {
+    /**
+     * Exception only thrown if an appropriate source of randomness cannot be found.
+     * https://www.php.net/manual/en/function.random-int.php
+     */
+    $paypalId = sprintf('paypal-%s', $block->getContainerId());
+    $paypalCreditId = sprintf('credit-%s', $block->getContainerId());
+    $paypalPayLaterId = sprintf('paylater-%s', $block->getContainerId());
+}
+$location = $block->getButtonLocation();
+$buttonConfig = $block->getButtonConfig();
+$buttonConfig['buttonIds'] = [
+    $paypalId,
+    $paypalCreditId,
+    $paypalPayLaterId
+];
+$jsonConfig = json_encode($buttonConfig);
+$scriptString = <<<SCRIPT
+    require([
+        'PayPal_Braintree/js/paypalButtonPreview',
+        'jquery'
+    ], function (button, $) {
+        $(function () {
+            button.init($jsonConfig);
+        });
+    })
+SCRIPT;
+echo $secureRenderer->renderTag('script', [], $scriptString, false);
+?>
+<div class="paypal paypal-<?= $location ?> checkout paypal-logo braintree-paypal-logo <?= $escaper->escapeHtmlAttr($block->getContainerId()) ?>-container">
+    <div id="<?= $escaper->escapeHtmlAttr($paypalId) ?>"
+            data-funding="paypal"
+            data-fundingicons="true"
+            data-label="<?= $block->getButtonLabel('paypal', $location) ?>"
+            data-color="<?= $block->getButtonColor('paypal', $location) ?>"
+            data-shape="<?= $block->getButtonShape('paypal', $location) ?>"
+            class="action-braintree-paypal-logo"></div>
+</div>
+<div class="paypal credit-<?= $location ?> checkout paypal-logo braintree-paypal-logo <?= $escaper->escapeHtmlAttr($block->getContainerId()) ?>-container">
+    <div id="<?= $escaper->escapeHtmlAttr($paypalCreditId) ?>"
+            data-funding="credit"
+            data-fundingicons="true"
+            data-label="<?= $block->getButtonLabel('credit', $location) ?>"
+            data-color="<?= $block->getButtonColor('credit', $location) ?>"
+            data-shape="<?= $block->getButtonShape('credit', $location) ?>"
+            class="action-braintree-paypal-logo"></div>
+</div>
+<div class="paypal paylater-<?= $location ?> checkout paypal-logo braintree-paylater-logo <?= $escaper->escapeHtmlAttr($block->getContainerId()) ?>-container">
+    <div id="<?= $escaper->escapeHtmlAttr($paypalPayLaterId) ?>"
+            data-funding="paylater"
+            data-fundingicons="true"
+            data-label="<?= $block->getButtonLabel('paylater', $location) ?>"
+            data-color="<?= $block->getButtonColor('paylater', $location) ?>"
+            data-shape="<?= $block->getButtonShape('paylater', $location) ?>"
+            class="action-braintree-paypal-logo"></div>
+</div>

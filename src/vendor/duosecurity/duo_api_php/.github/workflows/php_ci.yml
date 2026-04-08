@@ -1,0 +1,43 @@
+name: PHP CI
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  ci:
+    name: PHP CI - test
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        php: [8.2, 8.3, 8.4, 8.5]
+
+    steps:
+      - name: Install additional packages
+        run: sudo apt-get install -y stunnel
+
+      - name: Checkout
+        uses: actions/checkout@v2
+    
+      - name: Setup PHP
+        uses: shivammathur/setup-php@86e1ccdd8ddc47bffc29bf667143f363a4cdfdbc
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: xdebug
+    
+      - name: Composer install
+        run: composer install
+   
+      - name: PHP tests
+        run: ./vendor/bin/phpunit
+
+  ci_success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [ci]
+    steps:
+      - run: echo "All CI jobs passed successfully"

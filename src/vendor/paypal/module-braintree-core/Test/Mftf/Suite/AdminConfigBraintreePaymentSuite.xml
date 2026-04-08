@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<suites xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:mftf:Suite/etc/suiteSchema.xsd">
+    <suite name="AdminConfigBraintreePaymentSuite">
+        <before>
+            <!-- Login -->
+            <actionGroup ref="AdminLoginActionGroup" stepKey="login"/>
+            <!--Configure Braintree Payment Method with Vault enabled|-->
+            <actionGroup ref="AdminBraintreeWithVaultActionGroup" stepKey="ConfigBraintreePayment">
+                <argument name="credentials" value="SampleBraintreeCreditCardConfig"/>
+            </actionGroup>
+            <!-- Configure PayPal Express Checkout -->
+            <actionGroup ref="CliCacheCleanActionGroup" stepKey="cleanFullPageCache">
+                <argument name="tags" value="config full_page"/>
+            </actionGroup>
+        </before>
+        <after>
+            <magentoCLI command="config:set payment/braintree/active 0" stepKey="disableBraintree"/>
+            <actionGroup ref="CliCacheCleanActionGroup" stepKey="cleanFullPageCache">
+                <argument name="tags" value="config full_page"/>
+            </actionGroup>
+        </after>
+        <include>
+            <group name="braintree"/>
+        </include>
+    </suite>
+</suites>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+/**
+ * ADOBE CONFIDENTIAL
+ *
+ * Copyright 2020 Adobe
+ * All Rights Reserved.
+ *
+ * NOTICE: All information contained herein is, and remains
+ * the property of Adobe and its suppliers, if any. The intellectual
+ * and technical concepts contained herein are proprietary to Adobe
+ * and its suppliers and are protected by all applicable intellectual
+ * property laws, including trade secret and copyright laws.
+ * Dissemination of this information or reproduction of this material
+ * is strictly forbidden unless prior written permission is obtained
+ * from Adobe.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="payment_method_assign_data_payment_services_paypal_hosted_fields">
+        <observer name="payment_services_paypal_hosted_fields_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="payment_method_assign_data_payment_services_paypal_smart_buttons">
+        <observer name="payment_services_paypal_smart_buttons_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="payment_method_assign_data_payment_services_paypal_apple_pay">
+        <observer name="payment_services_paypal_smart_buttons_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="payment_method_assign_data_payment_services_paypal_google_pay">
+        <observer name="payment_services_paypal_smart_buttons_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="payment_method_assign_data_payment_services_paypal_fastlane">
+        <observer name="payment_services_paypal_fastlane_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="payment_method_assign_data_payment_services_paypal_apm">
+        <observer name="payment_services_paypal_apm_data_assign"
+                  instance="Magento\PaymentServicesPaypal\Observer\SaveAdditionalData"/>
+    </event>
+    <event name="admin_system_config_save">
+        <observer name="paypal_sdk_params_cache_flush"
+                  instance="Magento\PaymentServicesPaypal\Observer\FlushSdkParamsCache"/>
+    </event>
+    <event name="sales_order_shipment_save_after">
+        <observer name="payment_services_paypal_send_tracking_information"
+                  instance="Magento\PaymentServicesPaypal\Observer\SendTrackingInformation" />
+    </event>
+    <event name="sales_quote_payment_import_data_before">
+        <observer name="payment_services_paypal_quote_payment_import_data_before" instance="Magento\PaymentServicesPaypal\Observer\QuoteVaultPaymentImportDataBefore" />
+    </event>
+</config>

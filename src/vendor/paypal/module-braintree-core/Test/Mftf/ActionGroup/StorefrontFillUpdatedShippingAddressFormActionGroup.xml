@@ -1,0 +1,23 @@
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
+    <actionGroup name="StorefrontFillUpdatedShippingAddressFormActionGroup">
+        <arguments>
+            <argument name="customer" defaultValue="Simple_US_Customer" type="entity"/>
+            <argument name="customerAddress" defaultValue="US_Address_TX" type="entity"/>
+        </arguments>
+        <waitForElementVisible selector="{{CheckoutPaymentSection.customerDetails('firstname')}}" stepKey="waitForFirstNameField" />
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('firstname')}}" userInput="{{customer.firstname}}" stepKey="SetCustomerFirstName"/>
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('lastname')}}" userInput="{{customer.lastname}}" stepKey="SetCustomerLastName"/>
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('street[0]')}}" userInput="{{customerAddress.street[0]}}" stepKey="SetCustomerStreetAddress"/>
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('city')}}" userInput="{{customerAddress.city}}" stepKey="SetCustomerCity"/>
+        <selectOption selector="{{CheckoutPaymentSection.state}}" userInput="Texas" stepKey="fillState"/>
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('postcode')}}" userInput="{{customerAddress.postcode}}" stepKey="SetCustomerZipCode"/>
+        <fillField selector="{{CheckoutPaymentSection.customerDetails('telephone')}}" userInput="{{customerAddress.telephone}}" stepKey="SetCustomerPhoneNumber"/>
+    </actionGroup>
+</actionGroups>

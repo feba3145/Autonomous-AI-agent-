@@ -1,0 +1,34 @@
+<!--
+/**
+ * Copyright © Magento, Inc. All rights reserved.
+ * See COPYING.txt for license details.
+ */
+-->
+<!-- ko if: isMethodActive() -->
+<div class="braintree-express-paylater-message-container">
+    <div class="paypal-paylater paypal-logo braintree-paypal-logo braintree-paypal-express-paylater-container checkout">
+        <div data-bind="attr: {
+                'data-currency': checkoutCurrency,
+                'data-locale': checkoutLocale,
+                'data-amount': checkoutAmount,
+                'data-displayname': getMerchantName(),
+                'data-actionsuccess': actionSuccess,
+                'data-funding': 'paylater',
+                'data-fundingicons': true,
+                'data-label': buttonLabel,
+                'data-color': buttonColor,
+                'data-shape': buttonShape,
+                'data-requiredbillingaddress': getIsRequiredBillingAddress(),
+                'data-storecode': storeCode,
+                'data-skiporderreviewstep': skipOrderReviewStep,
+                'data-message-active': isMethodMessageActive(),
+                'data-messaging-layout': messageLayout,
+                'data-messaging-logo': messageLogo,
+                'data-messaging-logo-position': messageLogoPosition,
+                'data-messaging-text-color': messageTextColor,
+            }"
+             id="paypal-braintree-express-paylater"
+             class="action-braintree-paypal-logo express-paylater"></div>
+    </div>
+</div>
+<!-- /ko -->

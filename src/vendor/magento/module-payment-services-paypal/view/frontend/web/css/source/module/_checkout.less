@@ -1,0 +1,47 @@
+/**
+ * ADOBE CONFIDENTIAL
+ *
+ * Copyright 2026 Adobe
+ * All Rights Reserved.
+ *
+ * NOTICE: All information contained herein is, and remains
+ * the property of Adobe and its suppliers, if any. The intellectual
+ * and technical concepts contained herein are proprietary to Adobe
+ * and its suppliers and are protected by all applicable intellectual
+ * property laws, including trade secret and copyright laws.
+ * Dissemination of this information or reproduction of this material
+ * is strictly forbidden unless prior written permission is obtained
+ * from Adobe.
+ */
+
+//
+//  Common
+//  _____________________________________________
+
+& when (@media-common = true) {
+    .payment-services-express-payments {
+        .payment-services-express-payments {
+            &-container {
+                .lib-css(max-width, @checkout-shipping-address__max-width);
+                display: grid;
+                margin: 10px 0;
+            }
+
+            &-paypal .paypal-button-container,
+            &-alternate {
+                display: grid;
+                grid-gap: 5px;
+            }
+        }
+
+        + .field.addresses {
+            margin-top: @indent__l;
+        }
+    }
+
+    .checkout-payment-method {
+        .payment-services-express-payments {
+            margin-bottom: @indent__l;
+        }
+    }
+}

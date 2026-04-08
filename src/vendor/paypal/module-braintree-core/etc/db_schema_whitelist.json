@@ -1,0 +1,44 @@
+{
+    "sales_order": {
+        "column": {
+            "dispute_status": true
+        }
+    },
+    "sales_order_grid": {
+        "column": {
+            "dispute_status": true
+        }
+    },
+    "braintree_transaction_details": {
+        "column": {
+            "entity_id": true,
+            "order_id": true,
+            "transaction_source": true
+        },
+        "index": {
+            "BRAINTREE_TRANSACTION_DETAILS_ORDER_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "BRAINTREE_TRANSACTION_DETAILS_ORDER_ID_SALES_ORDER_ENTITY_ID": true
+        }
+    },
+    "braintree_credit_prices": {
+        "column": {
+            "id": true,
+            "product_id": true,
+            "term": true,
+            "monthly_payment": true,
+            "instalment_rate": true,
+            "cost_of_purchase": true,
+            "total_inc_interest": true
+        },
+        "index": {
+            "BRAINTREE_CREDIT_PRICES_PRODUCT_ID": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "BRAINTREE_CREDIT_PRICES_PRODUCT_ID_TERM": true
+        }
+    }
+}

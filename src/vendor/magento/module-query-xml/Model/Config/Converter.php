@@ -1,0 +1,72 @@
+<?php
+/**
+ * Copyright 2021 Adobe
+ * All Rights Reserved.
+ */
+
+namespace Magento\QueryXml\Model\Config;
+
+use DOMDocument;
+use Magento\Framework\Config\ConverterInterface;
+
+/**
+ * A converter of reports configuration.
+ *
+ * Converts configuration data stored in XML format into corresponding PHP array.
+ */
+class Converter implements ConverterInterface
+{
+    /**
+     * @var ConverterInterface
+     */
+    private $baseConverter;
+
+    /**
+     * @param ConverterInterface $converter
+     */
+    public function __construct(ConverterInterface $converter)
+    {
+        $this->baseConverter = $converter;
+    }
+
+    /**
+     * Builds map of source aliases to source names for given query.
+     *
+     * @param array $queryData
+     * @return array
+     */
+    private function buildSourcesMap(array $queryData) : array
+    {
+        $output = [];
+        $alias = $queryData['alias'] ?? $queryData['name'];
+        $output[$alias] = $queryData['name'];
+        if (isset($queryData['link-source'])) {
+            foreach ($queryData['link-source'] as $linkedSource) {
+                $alias = $linkedSource['alias'] ?? $linkedSource['name'];
+                $output[$alias] = $linkedSource['name'];
+            }
+        }
+        return $output;
+    }
+    /**
+     * Converts XML document into corresponding array.
+     *
+     * @param DOMDocument $source
+     * @return array
+     */
+    public function convert($source)
+    {
+        $configData = $this->baseConverter->convert($source);
+        if (!isset($configData['config'][0]['query'])) {
+            return [];
+        }
+        $queries = [];
+        foreach ($configData['config'][0]['query'] as $queryData) {
+            $entityData = array_shift($queryData['source']);
+            $queries[$queryData['name']] = $queryData;
+            $queries[$queryData['name']]['source'] = $entityData;
+            $queries[$queryData['name']]['map'] = $this->buildSourcesMap($entityData);
+        }
+        return $queries;
+    }
+}

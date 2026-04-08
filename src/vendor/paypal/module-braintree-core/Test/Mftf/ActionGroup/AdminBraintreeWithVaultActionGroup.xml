@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+
+<actionGroups xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/actionGroupSchema.xsd">
+    <actionGroup name="AdminBraintreeWithVaultActionGroup">
+        <annotations>
+            <description>Goes to the 'Configuration' page for 'Payment Methods'. Fills in the provided Sample Braintree credit card credentials and other details. Clicks on Save.</description>
+        </annotations>
+        <arguments>
+            <argument name="credentials" defaultValue="SampleBraintreeCreditCardConfig"/>
+            <argument name="countryCode" type="string" defaultValue="us"/>
+        </arguments>
+        <amOnPage url="{{AdminConfigPaymentMethodsPage.url}}" stepKey="navigateToPaymentConfigurationPage"/>
+        <waitForPageLoad stepKey="waitForConfigPageLoad"/>
+        <click selector ="{{BraintreeCreditCardConfigSection.configureBtn(countryCode)}}" stepKey="clickBraintreeConfigureBtn"/>
+        <fillField selector ="{{BraintreeCreditCardConfigSection.merchantId(countryCode)}}" userInput="{{credentials.braintree_merchantID}}" stepKey="inputMerchantId"/>
+        <fillField selector ="{{BraintreeCreditCardConfigSection.publicKey(countryCode)}}" userInput="{{credentials.braintree_public_key}}" stepKey="inputPublicKey"/>
+        <fillField selector ="{{BraintreeCreditCardConfigSection.privateKey(countryCode)}}" userInput="{{credentials.braintree_private_key}}" stepKey="inputPrivateKey"/>
+        <click selector ="{{BraintreeCreditCardConfigSection.validateCredentials(countryCode)}}" stepKey="clickValidateCredentials"/>
+        <selectOption selector ="{{BraintreeCreditCardConfigSection.enableCardPayments(countryCode)}}" userInput="Yes" stepKey="enableCardPayments"/>
+        <selectOption selector ="{{BraintreeCreditCardConfigSection.enableVault(countryCode)}}" userInput="Yes" stepKey="enableSolutionValut"/>
+        <click selector="{{AdminConfigSection.saveButton}}" stepKey="saveConfig"/>
+        <waitForPageLoad stepKey="waitForSaving"/>
+        <see selector="{{AdminMessagesSection.success}}" userInput="You saved the configuration." stepKey="seeSuccess"/>
+    </actionGroup>
+</actionGroups>

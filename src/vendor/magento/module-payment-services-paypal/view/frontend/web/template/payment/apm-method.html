@@ -1,0 +1,54 @@
+<!--
+/**
+* ADOBE CONFIDENTIAL
+*
+* Copyright 2026 Adobe
+* All Rights Reserved.
+*
+* NOTICE: All information contained herein is, and remains
+* the property of Adobe and its suppliers, if any. The intellectual
+* and technical concepts contained herein are proprietary to Adobe
+* and its suppliers and are protected by all applicable intellectual
+* property laws, including trade secret and copyright laws.
+* Dissemination of this information or reproduction of this material
+* is strictly forbidden unless prior written permission is obtained
+* from Adobe.
+*/
+-->
+<!-- ko if: (isEligible) -->
+    <div data-bind="attr: {class: 'payment-method payment-method-payment_services_paypal_apm payment-method-' + getApmCode()}, css: {'_active': isActive()}, afterRender: hideIdeal">
+        <div class="payment-method-title field choice">
+            <input type="radio"
+                name="payment[method]"
+                class="radio"
+                data-bind="
+                        attr: {'id': getApmCode()},
+                        value: getApmCode(),
+                        click: selectPaymentMethod,
+                        visible: isRadioButtonVisible()">
+            <label class="label" data-bind="attr: {'for': getApmCode()}">
+                <span class="payment-services-paypal-apm-mark" data-bind="afterRender: renderPaymentMark"></span>
+                <span data-bind="text: getTitle()"></span>
+            </label>
+        </div>
+        <div id="checkout-form" class="payment-method-content">
+            <!-- ko foreach: getRegion('messages') -->
+            <!-- ko template: getTemplate() --><!-- /ko -->
+            <!--/ko-->
+            <div class="payment-method-billing-address">
+                <!-- ko foreach: parentBilling.getRegion(getBillingAddressFormName()) -->
+                <!-- ko template: getTemplate() --><!-- /ko -->
+                <!--/ko-->
+            </div>
+            <div class="checkout-agreements-block">
+                <!-- ko foreach: parentBilling.getRegion('before-place-order') -->
+                <!-- ko template: getTemplate() --><!-- /ko -->
+                <!--/ko-->
+            </div>
+            <div class="card-container" data-bind="css: {'payment-services-paypal-apm-disabled': !isPlaceOrderActionAllowed()}">
+                <div data-bind="attr: { id: 'paypal_' + method + '_fields' }"></div>
+                <div data-bind="attr: { id: 'paypal_' + method + '_button' }"></div>
+            </div>
+        </div>
+    </div>
+<!-- /ko -->

@@ -1,0 +1,25 @@
+<?php
+/**
+ * Copyright 2020 Adobe
+ * All Rights Reserved.
+ */
+declare(strict_types=1);
+namespace PayPal\Braintree\Gateway\Http\Client;
+
+use PayPal\Braintree\Gateway\Request\CaptureDataBuilder;
+use PayPal\Braintree\Gateway\Request\PaymentDataBuilder;
+
+class TransactionSubmitForSettlement extends AbstractTransaction
+{
+    /**
+     * @inheritdoc
+     */
+    protected function process(array $data)
+    {
+        return  $this->adapter->submitForSettlement(
+            $data[CaptureDataBuilder::TRANSACTION_ID],
+            (float) $data[PaymentDataBuilder::AMOUNT],
+            [PaymentDataBuilder::ORDER_ID => $data[PaymentDataBuilder::ORDER_ID]]
+        );
+    }
+}

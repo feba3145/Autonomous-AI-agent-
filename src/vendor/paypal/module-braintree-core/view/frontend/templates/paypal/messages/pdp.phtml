@@ -1,0 +1,37 @@
+<?php
+use PayPal\Braintree\Block\PayPal\ProductPage;
+
+/** @var ProductPage $block */
+if (!$block->isActive() || !$block->isPayLaterMessageActive('productpage')) {
+    return;
+}
+
+try {
+    $id = sprintf('%s%s', $block->getContainerId(), random_int(PHP_INT_MIN, PHP_INT_MAX));
+} catch (Exception $e) {
+    /**
+     * Exception only thrown if an appropriate source of randomness cannot be found.
+     * https://www.php.net/manual/en/function.random-int.php
+     */
+    $id = 0;
+}
+?>
+
+<?php if ($block->showPayPalButton('messaging', 'productpage')): ?>
+    <div id="<?= /* @noEscape */ $id ?>-container-message" class="paypal-braintree-paylater-message-container paypal-braintree-paylater-message-container-pdp"></div>
+
+    <script type="text/x-magento-init">
+        {
+            "*": {
+                "PayPal_Braintree/js/messages/paylater": {
+                    "amount": "<?= /* @noEscape */ $block->getAmount() ?>",
+                    "clientToken": "<?= /* @noEscape */ $block->getClientToken() ?>",
+                    "currency": "<?= /* @noEscape */ $block->getCurrency() ?>",
+                    "messageElement": "#<?= /* @noEscape */ $id ?>-container-message",
+                    "messageStyles": <?= /* @noEscape */ json_encode($block->getMessageStyles()) ?>,
+                    "placement": "product"
+                }
+            }
+        }
+    </script>
+<?php endif; ?>

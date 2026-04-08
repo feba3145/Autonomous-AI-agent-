@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright 2024 Adobe
+ * All Rights Reserved.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Module/etc/module.xsd">
+    <module name="PayPal_BraintreeReward">
+        <sequence>
+            <module name="PayPal_Braintree"/>
+            <module name="Magento_Reward"/>
+            <module name="Magento_Quote"/>
+            <module name="Magento_Sales"/>
+        </sequence>
+    </module>
+</config>

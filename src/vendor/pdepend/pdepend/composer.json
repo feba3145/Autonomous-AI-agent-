@@ -1,0 +1,93 @@
+{
+    "name": "pdepend/pdepend",
+    "description": "Official version of pdepend to be handled with Composer",
+    "license": "BSD-3-Clause",
+    "type": "library",
+    "keywords": [
+        "dev",
+        "pdepend",
+        "PHP Depend",
+        "PHP_Depend"
+    ],
+    "require": {
+        "php": ">=8.1",
+        "php-64bit": "*",
+        "fidry/cpu-core-counter": "^1.1",
+        "react/child-process": "^0.6.7",
+        "symfony/config": "^5.4 || ^6.0 || ^7.0 || ^8.0",
+        "symfony/dependency-injection": "^5.4 || ^6.0 || ^7.0 || ^8.0",
+        "symfony/filesystem": "^5.4 || ^6.0 || ^7.0 || ^8.0",
+        "symfony/polyfill-mbstring": "^1.19",
+        "symfony/yaml": "^5.4 || ^6.0 || ^7.0 || ^8.0"
+    },
+    "require-dev": {
+        "brianium/paratest": "^7.3",
+        "easy-doc/easy-doc": "^1.2.3",
+        "friendsofphp/php-cs-fixer": "^3.57",
+        "gregwar/rst": "^1.0.6",
+        "phpstan/phpstan": "~2.1.32",
+        "phpunit/phpunit": "^10.5.20,<10.5.32 || ^11.0.0",
+        "squizlabs/php_codesniffer": "^3.8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "PDepend\\": "src"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "PDepend\\": "tests/php/PDepend/"
+        }
+    },
+    "bin": [
+        "bin/pdepend"
+    ],
+    "config": {
+        "process-timeout": 900,
+        "sort-packages": true,
+        "audit": {
+            "ignore": [
+                "PKSA-z3gr-8qht-p93v"
+            ]
+        }
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-master": "2.x-dev"
+        }
+    },
+    "suggest": {
+        "ext-sockets": "Recommended on Windows for multiprocessing support"
+    },
+    "scripts": {
+        "analyse": [
+            "@phpstan"
+        ],
+        "analyze": "@analyse",
+        "build-website": [
+            "php site/release-news-generator.php",
+            "easy-doc build site/config.php --verbose"
+        ],
+        "check": [
+            "@cs-fix",
+            "@test-coverage",
+            "@analyse"
+        ],
+        "cs-check": "phpcs -p --standard=PSR2 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 ./src ./tests/php",
+        "cs-fix": "phpcbf -p --standard=PSR2 --runtime-set ignore_errors_on_exit 1 --runtime-set ignore_warnings_on_exit 1 ./src ./tests/php",
+        "phpstan": "vendor/bin/phpstan",
+        "test": "paratest --no-coverage",
+        "test-coverage": "paratest"
+    },
+    "scripts-descriptions": {
+        "analyse": "Run the analyse steps (PHPStan)",
+        "analyze": "See analyse",
+        "build-website": "Build the website",
+        "check": "Runs @cs-fix, @test-coverage and @analyse.",
+        "cs-check": "Check the codestyle with phpcs.",
+        "cs-fix": "Check the codestyle with phpcbf and if possible fix the found issues.",
+        "phpstan": "Analyse the code with PHPStan.",
+        "test": "Run the tests without coverage.",
+        "test-coverage": "Run the tests with coverage."
+    }
+}

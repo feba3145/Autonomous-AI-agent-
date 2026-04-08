@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**å
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+
+<tests xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="urn:magento:mftf:Test/etc/testSchema.xsd">
+    <test name="StorefrontVerifyThatPayPaViaBraintreeDoesNotAskForBillingAddressForPhysicalQuoteTest">
+        <annotations>
+            <features value="Braintree"/>
+            <stories value="Checkout with Paypal Braintree"/>
+            <title value="Assert billing address and order btn is not available in PayPal BrainTree Review Page"/>
+            <description value="Verify that PayPal via Braintree does not ask for a billing address for physical quote"/>
+            <severity value="MAJOR"/>
+            <testCaseId value="AC-3950"/>
+            <group value="braintree"/>
+            <group value="3rd_party_integration" />
+            <group value="pr_exclude"/>
+        </annotations>
+        <before>
+            <actionGroup ref="AdminLoginActionGroup" stepKey="adminLogin"/>
+            <!-- Enable paypal in braintree payment -->
+            <magentoCLI command="config:set {{EnablePaypalInBraintreePayment.path}} {{EnablePaypalInBraintreePayment.value}}" stepKey="EnablePaypalInBraintreePayment"/>
+            <!-- Create Simple Product -->
+            <createData entity="simpleProductWithoutCategory" stepKey="createProduct">
+                <field key="price">100.00</field>
+            </createData>
+            <actionGroup ref="CliIndexerReindexActionGroup" stepKey="reindex">
+                <argument name="indices" value=""/>
+            </actionGroup>
+            <actionGroup ref="CliCacheCleanActionGroup" stepKey="cleanCache">
+                <argument name="tags" value="config full_page"/>
+            </actionGroup>
+        </before>
+        <after>
+            <deleteData createDataKey="createProduct" stepKey="deleteProduct"/>
+            <!-- Disable paypal in braintree payment -->
+            <magentoCLI command="config:set {{DisablePaypalInBraintreePayment.path}} {{DisablePaypalInBraintreePayment.value}}" stepKey="DisablePaypalInBraintreePayment"/>
+            <actionGroup ref="AdminLogoutActionGroup" stepKey="logout"/>
+        </after>
+        <!-- Navigate to StoreFront -->
+        <actionGroup ref="StorefrontOpenHomePageActionGroup" stepKey="goToStoreFront"/>
+        <!-- Add product to cart -->
+        <actionGroup ref="AddSimpleProductToCartActionGroup" stepKey="addProductToCart">
+            <argument name="product" value="$$createProduct$$"/>
+        </actionGroup>
+        <actionGroup ref="StorefrontOpenCheckoutPageActionGroup" stepKey="goToCheckout"/>
+        <!--Fill Shipping Address-->
+        <actionGroup ref="GuestCheckoutFillingShippingSectionWithoutRegionActionGroup" stepKey="guestCheckoutFillingShippingSectionUK">
+            <argument name="customerVar" value="CustomerEntityOne"/>
+            <argument name="customerAddressVar" value="UK_Not_Default_Address"/>
+        </actionGroup>
+        <!-- Click on PayPal payment radio button -->
+        <waitForElementClickable selector="{{CheckoutPaymentSection.paypalBraintreeRadio}}" stepKey="waitForPayPalBraintreeRadioButton"/>
+        <click selector="{{CheckoutPaymentSection.paypalBraintreeRadio}}" stepKey="selectPaypalBraintreePayment"/>
+        <!-- Verify My billing and shipping address not visible under paypal braintree payment in review page -->
+        <waitForElementNotVisible selector="{{CheckoutPaymentSection.myBillingAddressSameAsShipping}}" stepKey="verifyMyBillingAndShippingAddressNotVisibleUnderPaypalBraintreePaymentInReviewPage"/>
+        <!-- Verify order btn  not visible under paypal braintree payment in review page -->
+        <waitForElementNotVisible selector="{{CheckoutPaymentSection.magentoPaymentServicesHostedFieldsPlaceOrderButton}}" stepKey="verifyOrderBtnNotVisibleUnderPaypalBraintreePaymentInReviewPage"/>
+        <actionGroup ref="SwitchToPayPalGroupBtnActionGroup" stepKey="clickPayPalBtn"/>
+        <!-- Login to Paypal in-context and verify order total on paypal page-->
+        <actionGroup ref="StorefrontLoginToPayPalPaymentAccountTwoStepActionGroup" stepKey="loginToPayPal"/>
+        <actionGroup ref="StorefrontPaypalSwitchBackToMagentoFromCheckoutPageActionGroup" stepKey="confirmPaymentAndGoBackToMagento"/>
+        <waitForElementVisible selector="{{CheckoutSuccessMainSection.orderNumber}}" stepKey="waitForOrderNumberToBeGrabbed"/>
+        <waitForText selector="{{CheckoutSuccessMainSection.success}}" userInput="We'll email you an order confirmation with details and tracking info." stepKey="seeSuccessMessage"/>
+    </test>
+</tests>

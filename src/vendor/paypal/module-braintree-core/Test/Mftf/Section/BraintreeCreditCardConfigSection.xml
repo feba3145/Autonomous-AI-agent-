@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ /**
+  * Copyright © Magento, Inc. All rights reserved.
+  * See COPYING.txt for license details.
+  */
+-->
+<sections xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:noNamespaceSchemaLocation="urn:magento:mftf:Page/etc/SectionObject.xsd">
+    <section name="BraintreeCreditCardConfigSection">
+        <element name="configureBtn" type="button" selector="#payment_{{countryCode}}_braintree_section_braintree-head" parameterized="true"/>
+        <element name="merchantId" type="text" selector="#payment_{{countryCode}}_braintree_section_braintree_braintree_required_sandbox_merchant_id" parameterized="true"/>
+        <element name="publicKey" type="text" selector="#payment_{{countryCode}}_braintree_section_braintree_braintree_required_sandbox_public_key" parameterized="true"/>
+        <element name="privateKey" type="text" selector="#payment_{{countryCode}}_braintree_section_braintree_braintree_required_sandbox_private_key" parameterized="true"/>
+        <element name="validateCredentials" type="button" selector="#row_payment_{{countryCode}}_braintree_section_braintree_braintree_required_key_validation .button" parameterized="true"/>
+        <element name="enableCardPayments" type="button" selector="#payment_{{countryCode}}_braintree_section_braintree_active" parameterized="true"/>
+        <element name="enableVault" type="button" selector="#payment_{{countryCode}}_braintree_section_braintree_braintree_cc_vault_active" parameterized="true"/>
+    </section>
+</sections>

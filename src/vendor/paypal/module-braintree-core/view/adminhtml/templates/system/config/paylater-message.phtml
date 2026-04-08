@@ -1,0 +1,28 @@
+<?php
+use PayPal\Braintree\Block\Adminhtml\System\Config\PayLaterMessage;
+
+/** @var PayLaterMessage $block */
+try {
+    $id = sprintf('%s%s', $block->getContainerId(), random_int(PHP_INT_MIN, PHP_INT_MAX));
+} catch (Exception $e) {
+    /**
+     * Exception only thrown if an appropriate source of randomness cannot be found.
+     * https://www.php.net/manual/en/function.random-int.php
+     */
+    $id = 0;
+}
+?>
+<div id="<?= /* @noEscape */ $id ?>-container">
+</div>
+<script type="text/x-magento-init">
+    {
+        "*": {
+            "PayPal_Braintree/js/messages": {
+                "messageId": "<?= /* @noEscape */ $id ?>",
+                "clientToken": "<?= /* @noEscape */ $block->getClientToken() ?>",
+                "amount": "<?= /* @noEscape */ $block->getAmount() ?>",
+                "currency": "<?= /* @noEscape */ $block->getCurrency() ?>"
+            }
+        }
+    }
+</script>
