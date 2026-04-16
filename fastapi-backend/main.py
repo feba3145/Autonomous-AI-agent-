@@ -129,6 +129,15 @@ def rag_chat(payload: dict):
     conn.close()
 
     products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
+
+    THRESHOLD = 0.5
+    if not products or products[0]["similarity"] < THRESHOLD:
+        return {
+            "answer": "I'm sorry, I couldn't find any products matching your request in our catalog. Could you try describing what you're looking for differently? For example, try searching for jackets, hoodies, tees, or workout gear.",
+            "products": [],
+            "session_id": session_id
+        }
+
     context = "\n".join([f"- {r['name']} (SKU: {r['sku']}, Price: ${r['price']:.2f})" for r in products])
 
     history_text = ""
