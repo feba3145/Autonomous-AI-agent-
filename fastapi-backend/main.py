@@ -183,3 +183,163 @@ Assistant:"""
         "products": products,
         "session_id": session_id
     }
+
+# ─── NEW MODELS ───
+class CartItem(BaseModel):
+    session_id: str
+    sku: str
+    qty: int = 1
+
+class CartUpdate(BaseModel):
+    session_id: str
+    sku: str
+    qty: int
+
+class CartRemove(BaseModel):
+    session_id: str
+    sku: str
+
+# In-memory cart store
+cart_store = {}
+
+# ─── NEW MODELS ───
+class CartItem(BaseModel):
+    session_id: str
+    sku: str
+    qty: int = 1
+
+class CartUpdate(BaseModel):
+    session_id: str
+    sku: str
+    qty: int
+
+class CartRemove(BaseModel):
+    session_id: str
+    sku: str
+
+# In-memory cart store
+cart_store = {}
+
+# ─── NEW MODELS ───
+class CartItem(BaseModel):
+    session_id: str
+    sku: str
+    qty: int = 1
+
+class CartUpdate(BaseModel):
+    session_id: str
+    sku: str
+    qty: int
+
+class CartRemove(BaseModel):
+    session_id: str
+    sku: str
+
+# In-memory cart store
+cart_store = {}
+
+# ─── PRODUCT ENDPOINTS ───
+@app.get("/products")
+def get_products(limit: int = 20, page: int = 1):
+    conn = get_db()
+    cur = conn.cursor()
+    offset = (page - 1) * limit
+    cur.execute("SELECT sku, name, price FROM products WHERE price > 0 LIMIT %s OFFSET %s", (limit, offset))
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"sku": r[0], "name": r[1], "price": float(r[2])} for r in rows]
+
+@app.get("/product-count")
+def product_count():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM products WHERE price > 0")
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return {"count": count}
+
+@app.get("/product/sku/{sku}")
+def get_product_by_sku(sku: str):
+    result = mcp.get_product_by_sku(sku)
+    return result if result else {"error": "Product not found"}
+
+@app.get("/product/id/{product_id}")
+def get_product_by_id(product_id: int):
+    result = mcp.get_product_by_id(product_id)
+    return result if result else {"error": "Product not found"}
+
+@app.get("/stock/{sku}")
+def get_stock(sku: str):
+    result = mcp.get_product_stock(sku)
+    return result if result else {"error": "Stock info not found"}
+
+# ─── CUSTOMER & ORDER ENDPOINTS ───
+@app.get("/customer/orders")
+def get_customer_orders(email: str):
+    result = mcp.get_customer_orders(email)
+    return result if result else {"error": "No orders found"}
+
+@app.get("/order-count")
+def get_order_count(date_range: str = "today"):
+    result = mcp.get_order_count(date_range)
+    return result if result else {"error": "Could not fetch order count"}
+
+@app.get("/product-sales")
+def get_product_sales(date_range: str = "this month"):
+    result = mcp.get_product_sales(date_range)
+    return result if result else {"error": "Could not fetch sales"}
+
+# ─── CART MODELS ───
+class CartItem(BaseModel):
+    session_id: str
+    sku: str
+    qty: int = 1
+
+class CartUpdate(BaseModel):
+    session_id: str
+    sku: str
+    qty: int
+
+class CartRemove(BaseModel):
+    session_id: str
+    sku: str
+
+cart_store = {}
+
+# ─── CART ENDPOINTS ───
+@app.post("/cart/add")
+def cart_add(item: CartItem):
+    sid = item.session_id
+    if sid not in cart_store:
+        cart_store[sid] = []
+    existing = next((i for i in cart_store[sid] if i["sku"] == item.sku), None)
+    if existing:
+        existing["qty"] += item.qty
+    else:
+        product = mcp.get_product_by_sku(item.sku)
+        cart_store[sid].append({"sku": item.sku, "name": product.get("name", item.sku), "price": product.get("price", 0), "qty": item.qty})
+    return {"message": "Added to cart", "cart": cart_store[sid]}
+
+@app.get("/cart/{session_id}")
+def cart_view(session_id: str):
+    cart = cart_store.get(session_id, [])
+    total = sum(i["price"] * i["qty"] for i in cart)
+    return {"cart": cart, "total": round(total, 2), "item_count": len(cart)}
+
+@app.delete("/cart/remove")
+def cart_remove(item: CartRemove):
+    sid = item.session_id
+    if sid in cart_store:
+        cart_store[sid] = [i for i in cart_store[sid] if i["sku"] != item.sku]
+    return {"message": "Removed from cart", "cart": cart_store.get(sid, [])}
+
+@app.put("/cart/update")
+def cart_update(item: CartUpdate):
+    sid = item.session_id
+    if sid in cart_store:
+        for i in cart_store[sid]:
+            if i["sku"] == item.sku:
+                i["qty"] = item.qty
+    return {"message": "Cart updated", "cart": cart_store.get(sid, [])}
