@@ -9,6 +9,7 @@ from pgvector.psycopg2 import register_vector
 from sentence_transformers import SentenceTransformer
 from langchain_ollama import OllamaLLM
 from dotenv import load_dotenv
+from mcp_client import mcp
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
@@ -129,6 +130,17 @@ def rag_chat(payload: dict):
     conn.close()
 
     products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
+
+    # Check real-time stock via Bold MCP
+    in_stock = []
+    for p in products:
+        try:
+            stock = mcp.get_product_stock(p["sku"])
+            if stock.get("is_in_stock", False):
+                in_stock.append(p)
+        except:
+            in_stock.append(p)
+    products = in_stock if in_stock else products
 
     THRESHOLD = 0.5
     if not products or products[0]["similarity"] < THRESHOLD:
