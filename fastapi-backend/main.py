@@ -1,4 +1,10 @@
 from fastapi import FastAPI
+from pydantic import BaseModel
+
+class ChatRequest(BaseModel):
+    query: str
+    session_id: str = "default"
+
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import psycopg2
@@ -63,7 +69,7 @@ def root():
 def health():
     return {"status": "ok"}
 @app.get("/search")
-def search(q: str, limit: int = 5):
+def search(q: str = "jacket", limit: int = 5):
     embedding = model.encode(q).tolist()
     conn = get_db()
     cur = conn.cursor()
@@ -81,8 +87,8 @@ def search(q: str, limit: int = 5):
     return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
 
 @app.post("/chat")
-def chat(payload: dict):
-    query = payload.get("query", "")
+def chat(payload: ChatRequest):
+    query = payload.query
     embedding = model.encode(query).tolist()
     conn = get_db()
     cur = conn.cursor()
@@ -105,9 +111,9 @@ def chat(payload: dict):
     )
     return {"response": res.json().get("response", ""), "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0)} for r in rows]}
 @app.post("/rag-chat")
-def rag_chat(payload: dict):
-    query = payload.get("query", "")
-    session_id = payload.get("session_id", "default")
+def rag_chat(payload: ChatRequest):
+    query = payload.query
+    session_id = payload.session_id
 
     if session_id not in session_store:
         session_store[session_id] = {"history": [], "last_used": time.time()}
