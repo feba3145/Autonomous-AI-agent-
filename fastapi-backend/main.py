@@ -1,11 +1,6 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
-
-class ChatRequest(BaseModel):
-    query: str
-    session_id: str = "default"
-
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import requests
 import psycopg2
 import os
@@ -33,7 +28,28 @@ app.add_middleware(
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
 SESSION_TIMEOUT = 1800
+cart_store = {}
 
+# ─── MODELS ───
+class ChatRequest(BaseModel):
+    query: str
+    session_id: str = "default"
+
+class CartItem(BaseModel):
+    session_id: str
+    sku: str
+    qty: int = 1
+
+class CartUpdate(BaseModel):
+    session_id: str
+    sku: str
+    qty: int
+
+class CartRemove(BaseModel):
+    session_id: str
+    sku: str
+
+# ─── SESSION CLEANUP ───
 def cleanup_sessions():
     while True:
         time.sleep(300)
@@ -44,6 +60,8 @@ def cleanup_sessions():
             del session_store[sid]
 
 threading.Thread(target=cleanup_sessions, daemon=True).start()
+
+# ─── DB ───
 def get_db():
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
@@ -54,6 +72,7 @@ def get_db():
     )
     register_vector(conn)
     return conn
+
 SYSTEM_PROMPT = """You are an intelligent shopping assistant.
 Recommend products ONLY from the retrieved context below.
 Include product name and price in every recommendation.
@@ -61,6 +80,9 @@ Never make up products not in the context.
 Be friendly, concise and helpful.
 If asked to buy, add to cart or place order, tell the customer that feature is coming soon."""
 
+BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
+
+# ─── BASIC ENDPOINTS ───
 @app.get("/")
 def root():
     return {"status": "AI Shopping Assistant API is running"}
@@ -68,6 +90,8 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# ─── SEARCH ───
 @app.get("/search")
 def search(q: str = "jacket", limit: int = 5):
     embedding = model.encode(q).tolist()
@@ -86,6 +110,7 @@ def search(q: str = "jacket", limit: int = 5):
     conn.close()
     return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
 
+# ─── CHAT ───
 @app.post("/chat")
 def chat(payload: ChatRequest):
     query = payload.query
@@ -110,16 +135,24 @@ def chat(payload: ChatRequest):
         json={"model": "llama3.2", "prompt": prompt, "stream": False}
     )
     return {"response": res.json().get("response", ""), "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0)} for r in rows]}
+
+# ─── RAG CHAT ───
 @app.post("/rag-chat")
 def rag_chat(payload: ChatRequest):
     query = payload.query
     session_id = payload.session_id
 
+    # Init session
     if session_id not in session_store:
-        session_store[session_id] = {"history": [], "last_used": time.time()}
+        session_store[session_id] = {
+            "history": [],
+            "last_used": time.time(),
+            "last_products": []   # FIX: track last shown products
+        }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id]["history"]
 
+    # RAG search
     embedding = model.encode(query).tolist()
     conn = get_db()
     cur = conn.cursor()
@@ -148,6 +181,47 @@ def rag_chat(payload: ChatRequest):
             in_stock.append(p)
     products = in_stock if in_stock else products
 
+    # FIX: Detect buy intent BEFORE saving last_products
+    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
+
+    if is_buy_intent:
+        # FIX: use last shown products, not current search results
+        last_products = session_store[session_id].get("last_products", [])
+        if not last_products:
+            return {
+                "answer": "Please search for a product first, then I can add it to your cart!",
+                "products": [],
+                "session_id": session_id
+            }
+        top = last_products[0]
+        if session_id not in cart_store:
+            cart_store[session_id] = []
+        existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
+        if existing:
+            existing["qty"] += 1
+        else:
+            cart_store[session_id].append({
+                "sku": top["sku"],
+                "name": top["name"],
+                "price": top["price"],
+                "qty": 1
+            })
+        cart = cart_store[session_id]
+        total = sum(i["price"] * i["qty"] for i in cart)
+        history.append({"role": "human", "content": query})
+        history.append({"role": "assistant", "content": f"Added {top['name']} to your cart!"})
+        return {
+            "answer": f"I have added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Would you like to checkout or continue shopping?",
+            "products": last_products,
+            "session_id": session_id,
+            "cart": cart,
+            "cart_total": round(total, 2)
+        }
+
+    # FIX: Save products to session AFTER buy intent check
+    session_store[session_id]["last_products"] = products
+
+    # Similarity threshold
     THRESHOLD = 0.5
     if not products or products[0]["similarity"] < THRESHOLD:
         return {
@@ -172,52 +246,6 @@ Previous Conversation:
 Customer: {query}
 Assistant:"""
 
-    BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
-    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
-
-    if is_buy_intent and products:
-        top = products[0]
-        if session_id not in cart_store:
-            cart_store[session_id] =[]
-        existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
-        if existing:
-            existing["qty"] += 1
-        else:
-            cart_store[session_id].append({"sku": top["sku"], "name": top["name"], "price": top["price"], "qty": 1})
-        cart = cart_store[session_id]
-        total = sum(i["price"] * i["qty"] for i in cart)
-        history.append({"role": "human", "content": query})
-        history.append({"role": "assistant", "content": "Added " + top["name"] + " to your cart!"})
-        return {
-            "answer": "I have added " + top["name"] + " to your cart for $" + str(top["price"]) + ". Total: $" + str(round(total, 2)) + ". Would you like to checkout or continue shopping?",
-            "products": products,
-            "session_id": session_id,
-            "cart": cart,
-            "cart_total": round(total, 2)
-        }
-
-    BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
-    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
-    if is_buy_intent and products:
-        top = products[0]
-        if session_id not in cart_store:
-            cart_store[session_id] = []
-        existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
-        if existing:
-            existing["qty"] += 1
-        else:
-            cart_store[session_id].append({"sku": top["sku"], "name": top["name"], "price": top["price"], "qty": 1})
-        cart = cart_store[session_id]
-        total = sum(i["price"] * i["qty"] for i in cart)
-        history.append({"role": "human", "content": query})
-        history.append({"role": "assistant", "content": "Added " + top["name"] + " to your cart!"})
-        return {
-            "answer": "I have added " + top["name"] + " to your cart for $" + str(top["price"]) + ". Total: $" + str(round(total, 2)) + ". Would you like to checkout or continue shopping?",
-            "products": products,
-            "session_id": session_id,
-            "cart": cart,
-            "cart_total": round(total, 2)
-        }
     llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434")
     answer = llm.invoke(prompt)
 
@@ -229,60 +257,6 @@ Assistant:"""
         "products": products,
         "session_id": session_id
     }
-
-# ─── NEW MODELS ───
-class CartItem(BaseModel):
-    session_id: str
-    sku: str
-    qty: int = 1
-
-class CartUpdate(BaseModel):
-    session_id: str
-    sku: str
-    qty: int
-
-class CartRemove(BaseModel):
-    session_id: str
-    sku: str
-
-# In-memory cart store
-cart_store = {}
-
-# ─── NEW MODELS ───
-class CartItem(BaseModel):
-    session_id: str
-    sku: str
-    qty: int = 1
-
-class CartUpdate(BaseModel):
-    session_id: str
-    sku: str
-    qty: int
-
-class CartRemove(BaseModel):
-    session_id: str
-    sku: str
-
-# In-memory cart store
-cart_store = {}
-
-# ─── NEW MODELS ───
-class CartItem(BaseModel):
-    session_id: str
-    sku: str
-    qty: int = 1
-
-class CartUpdate(BaseModel):
-    session_id: str
-    sku: str
-    qty: int
-
-class CartRemove(BaseModel):
-    session_id: str
-    sku: str
-
-# In-memory cart store
-cart_store = {}
 
 # ─── PRODUCT ENDPOINTS ───
 @app.get("/products")
@@ -337,23 +311,6 @@ def get_product_sales(date_range: str = "this month"):
     result = mcp.get_product_sales(date_range)
     return result if result else {"error": "Could not fetch sales"}
 
-# ─── CART MODELS ───
-class CartItem(BaseModel):
-    session_id: str
-    sku: str
-    qty: int = 1
-
-class CartUpdate(BaseModel):
-    session_id: str
-    sku: str
-    qty: int
-
-class CartRemove(BaseModel):
-    session_id: str
-    sku: str
-
-cart_store = {}
-
 # ─── CART ENDPOINTS ───
 @app.post("/cart/add")
 def cart_add(item: CartItem):
@@ -365,7 +322,12 @@ def cart_add(item: CartItem):
         existing["qty"] += item.qty
     else:
         product = mcp.get_product_by_sku(item.sku)
-        cart_store[sid].append({"sku": item.sku, "name": product.get("name", item.sku), "price": product.get("price", 0), "qty": item.qty})
+        cart_store[sid].append({
+            "sku": item.sku,
+            "name": product.get("name", item.sku),
+            "price": product.get("price", 0),
+            "qty": item.qty
+        })
     return {"message": "Added to cart", "cart": cart_store[sid]}
 
 @app.get("/cart/{session_id}")
