@@ -29,6 +29,7 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
 SESSION_TIMEOUT = 1800
 cart_store = {}
+wishlist_store = {}
 
 # ─── MODELS ───
 class ChatRequest(BaseModel):
@@ -217,7 +218,40 @@ def rag_chat(payload: ChatRequest):
             "cart": cart,
             "cart_total": round(total, 2)
         }
+     # Wishlist intent
+    WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
+    is_wishlist_intent = any(kw in query.lower() for kw in WISHLIST_KEYWORDS)
+    if is_wishlist_intent:
+        last_products = session_store[session_id].get("last_products", [])
+        if not last_products:
+            return {
+                "answer": "Please search for a product first, then I can save it to your wishlist!",
+                "products": [],
+                "session_id": session_id
+            }
+        top = last_products[0]
+        if session_id not in wishlist_store:
+            wishlist_store[session_id] = []
+        existing = next((i for i in wishlist_store[session_id] if i["sku"] == top["sku"]), None)
+        if existing:
+            return {
+                "answer": f"{top['name']} is already in your wishlist!",
+                "products": last_products,
+                "session_id": session_id
+            }
+        wishlist_store[session_id].append({
+            "sku": top["sku"],
+            "name": top["name"],
+            "price": top["price"]
+        })
+        return {
+            "answer": f"Saved {top['name']} to your wishlist! You can move it to cart anytime.",
+            "products": last_products,
+            "session_id": session_id,
+            "wishlist": wishlist_store[session_id]
+        }
 
+    session_store[session_id]["last_products"] = products   # ← THIS LINE STAYS
     # FIX: Save products to session AFTER buy intent check
     session_store[session_id]["last_products"] = products
 
@@ -351,3 +385,53 @@ def cart_update(item: CartUpdate):
             if i["sku"] == item.sku:
                 i["qty"] = item.qty
     return {"message": "Cart updated", "cart": cart_store.get(sid, [])}
+# ─── WISHLIST ENDPOINTS ───
+@app.post("/wishlist/add")
+def wishlist_add(item: CartItem):
+    sid = item.session_id
+    if sid not in wishlist_store:
+        wishlist_store[sid] = []
+    existing = next((i for i in wishlist_store[sid] if i["sku"] == item.sku), None)
+    if existing:
+        return {"message": "Already in wishlist", "wishlist": wishlist_store[sid]}
+    product = mcp.get_product_by_sku(item.sku)
+    wishlist_store[sid].append({
+        "sku": item.sku,
+        "name": product.get("name", item.sku),
+        "price": product.get("price", 0)
+    })
+    return {"message": "Added to wishlist", "wishlist": wishlist_store[sid]}
+
+@app.get("/wishlist/{session_id}")
+def wishlist_view(session_id: str):
+    wishlist = wishlist_store.get(session_id, [])
+    return {"wishlist": wishlist, "item_count": len(wishlist)}
+
+@app.delete("/wishlist/remove")
+def wishlist_remove(item: CartRemove):
+    sid = item.session_id
+    if sid in wishlist_store:
+        wishlist_store[sid] = [i for i in wishlist_store[sid] if i["sku"] != item.sku]
+    return {"message": "Removed from wishlist", "wishlist": wishlist_store.get(sid, [])}
+
+@app.post("/wishlist/move-to-cart")
+def wishlist_move_to_cart(item: CartRemove):
+    sid = item.session_id
+    wishlist = wishlist_store.get(sid, [])
+    product = next((i for i in wishlist if i["sku"] == item.sku), None)
+    if not product:
+        return {"message": "Item not found in wishlist"}
+    wishlist_store[sid] = [i for i in wishlist if i["sku"] != item.sku]
+    if sid not in cart_store:
+        cart_store[sid] = []
+    existing = next((i for i in cart_store[sid] if i["sku"] == item.sku), None)
+    if existing:
+        existing["qty"] += 1
+    else:
+        cart_store[sid].append({
+            "sku": product["sku"],
+            "name": product["name"],
+            "price": product["price"],
+            "qty": 1
+        })
+    return {"message": f"Moved {product['name']} to cart", "cart": cart_store[sid], "wishlist": wishlist_store[sid]}
