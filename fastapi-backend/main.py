@@ -10,6 +10,7 @@ from pgvector.psycopg2 import register_vector
 from sentence_transformers import SentenceTransformer
 from langchain_ollama import OllamaLLM
 from dotenv import load_dotenv
+from address_router import router as address_router
 from mcp_client import mcp
 import urllib3
 urllib3.disable_warnings()
@@ -24,6 +25,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(address_router)
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
@@ -50,6 +52,19 @@ class CartRemove(BaseModel):
     session_id: str
     sku: str
 
+# ─── KEYWORDS ───
+BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
+DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my", "my home", "my office", "my address"]
+WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
+
+# ─── SYSTEM PROMPT ───
+SYSTEM_PROMPT = """You are an intelligent shopping assistant.
+Recommend products ONLY from the retrieved context below.
+Include product name and price in every recommendation.
+Never make up products not in the context.
+Be friendly, concise and helpful.
+If asked to buy, add to cart or place order, tell the customer that feature is coming soon."""
+
 # ─── SESSION CLEANUP ───
 def cleanup_sessions():
     while True:
@@ -73,15 +88,6 @@ def get_db():
     )
     register_vector(conn)
     return conn
-
-SYSTEM_PROMPT = """You are an intelligent shopping assistant.
-Recommend products ONLY from the retrieved context below.
-Include product name and price in every recommendation.
-Never make up products not in the context.
-Be friendly, concise and helpful.
-If asked to buy, add to cart or place order, tell the customer that feature is coming soon."""
-
-BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
 
 # ─── BASIC ENDPOINTS ───
 @app.get("/")
@@ -135,7 +141,10 @@ def chat(payload: ChatRequest):
         "http://localhost:11434/api/generate",
         json={"model": "llama3.2", "prompt": prompt, "stream": False}
     )
-    return {"response": res.json().get("response", ""), "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0)} for r in rows]}
+    return {
+        "response": res.json().get("response", ""),
+        "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0)} for r in rows]
+    }
 
 # ─── RAG CHAT ───
 @app.post("/rag-chat")
@@ -148,7 +157,7 @@ def rag_chat(payload: ChatRequest):
         session_store[session_id] = {
             "history": [],
             "last_used": time.time(),
-            "last_products": []   # FIX: track last shown products
+            "last_products": []
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id]["history"]
@@ -171,7 +180,7 @@ def rag_chat(payload: ChatRequest):
 
     products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
 
-    # Check real-time stock via Bold MCP
+    # Check real-time stock via MCP
     in_stock = []
     for p in products:
         try:
@@ -182,11 +191,28 @@ def rag_chat(payload: ChatRequest):
             in_stock.append(p)
     products = in_stock if in_stock else products
 
-    # FIX: Detect buy intent BEFORE saving last_products
+    # ── Delivery intent ──
+    is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
+    if is_delivery_intent:
+        try:
+            from address_router import resolve_address, ResolveRequest
+            addr = resolve_address(ResolveRequest(customer_id=1, query=query))
+            return {
+                "answer": f"I'll deliver to your {addr['label']}: {addr['full_address']}. Shall I confirm this order?",
+                "products": session_store[session_id].get("last_products", []),
+                "session_id": session_id
+            }
+        except Exception as e:
+            if "404" in str(e) or "No saved address" in str(e):
+                return {
+                    "answer": "I don't have a saved address for you. Could you please provide your delivery address?",
+                    "products": [],
+                    "session_id": session_id
+                }
+            pass  # unexpected error, fall through to normal flow
+    # ── Buy intent ──
     is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
-
     if is_buy_intent:
-        # FIX: use last shown products, not current search results
         last_products = session_store[session_id].get("last_products", [])
         if not last_products:
             return {
@@ -212,14 +238,14 @@ def rag_chat(payload: ChatRequest):
         history.append({"role": "human", "content": query})
         history.append({"role": "assistant", "content": f"Added {top['name']} to your cart!"})
         return {
-            "answer": f"I have added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Would you like to checkout or continue shopping?",
+            "answer": f"Added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Would you like to checkout or continue shopping?",
             "products": last_products,
             "session_id": session_id,
             "cart": cart,
             "cart_total": round(total, 2)
         }
-     # Wishlist intent
-    WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
+
+    # ── Wishlist intent ──
     is_wishlist_intent = any(kw in query.lower() for kw in WISHLIST_KEYWORDS)
     if is_wishlist_intent:
         last_products = session_store[session_id].get("last_products", [])
@@ -251,8 +277,7 @@ def rag_chat(payload: ChatRequest):
             "wishlist": wishlist_store[session_id]
         }
 
-    session_store[session_id]["last_products"] = products   # ← THIS LINE STAYS
-    # FIX: Save products to session AFTER buy intent check
+    # ── Save products to session (after all intent checks) ──
     session_store[session_id]["last_products"] = products
 
     # Similarity threshold
@@ -385,6 +410,7 @@ def cart_update(item: CartUpdate):
             if i["sku"] == item.sku:
                 i["qty"] = item.qty
     return {"message": "Cart updated", "cart": cart_store.get(sid, [])}
+
 # ─── WISHLIST ENDPOINTS ───
 @app.post("/wishlist/add")
 def wishlist_add(item: CartItem):
@@ -434,4 +460,8 @@ def wishlist_move_to_cart(item: CartRemove):
             "price": product["price"],
             "qty": 1
         })
-    return {"message": f"Moved {product['name']} to cart", "cart": cart_store[sid], "wishlist": wishlist_store[sid]}
+    return {
+        "message": f"Moved {product['name']} to cart",
+        "cart": cart_store[sid],
+        "wishlist": wishlist_store[sid]
+    }
