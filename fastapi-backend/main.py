@@ -63,8 +63,10 @@ Recommend products ONLY from the retrieved context below.
 Include product name and price in every recommendation.
 Never make up products not in the context.
 Be friendly, concise and helpful.
-If asked to buy, add to cart or place order, tell the customer that feature is coming soon."""
-
+If the customer mentions a trip or activity (like hiking, himalaya, beach, gym),
+understand what kind of products they need (jackets, thermals, hoodies for cold trips etc.)
+and recommend the most relevant products from the context.
+If asked to buy, add to cart or place order, process it immediately."""
 # ─── SESSION CLEANUP ───
 def cleanup_sessions():
     while True:
@@ -163,7 +165,12 @@ def rag_chat(payload: ChatRequest):
     history = session_store[session_id]["history"]
 
     # RAG search
-    embedding = model.encode(query).tolist()
+    interpret_res = requests.post(
+        "http://localhost:11434/api/generate",
+        json={"model": "llama3.2", "prompt": f"A customer said: '{query}'. List only product keywords to search for (like jacket, thermal, boots). Reply with keywords only, comma separated, no explanation.", "stream": False}
+    )
+    interpreted_query = interpret_res.json().get("response", query).strip()
+    embedding = model.encode(interpreted_query).tolist()
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
