@@ -1,6 +1,7 @@
 content = open('/root/magento/fastapi-backend/main.py').read()
 
-old = '    llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434")'
+old = '''    THRESHOLD = 0.5
+    if not products or products[0]["similarity"] < THRESHOLD:'''
 
 new = '''    BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
     is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
@@ -24,7 +25,24 @@ new = '''    BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want 
             "cart": cart,
             "cart_total": round(total, 2)
         }
-    llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434")'''
+
+    THRESHOLD = 0.5
+    if not products or products[0]["similarity"] < THRESHOLD:'''
+
+content = open('/root/magento/fastapi-backend/main.py').read()
+
+old = '    # Detect buy intent\n    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)\n    if is_buy_intent and products:'
+
+new = '''    # Detect buy intent
+    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
+
+    # Use last recommended products if buy intent detected
+    if is_buy_intent:
+        last_products = session_store[session_id].get("last_products", [])
+        if last_products:
+            products = last_products
+
+    if is_buy_intent and products:'''
 
 if old in content:
     content = content.replace(old, new)
