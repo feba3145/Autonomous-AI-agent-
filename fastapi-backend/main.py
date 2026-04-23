@@ -155,15 +155,16 @@ def rag_chat(payload: ChatRequest):
     session_id = payload.session_id
 
     # Init session
+    # Init session
     if session_id not in session_store:
         session_store[session_id] = {
             "history": [],
             "last_used": time.time(),
-            "last_products": []
+            "last_products": [],
+            "wishlist_pending": False
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id]["history"]
-
     # RAG search
     interpret_res = requests.post(
         "http://localhost:11434/api/generate",
@@ -253,6 +254,34 @@ def rag_chat(payload: ChatRequest):
         }
 
     # ── Wishlist intent ──
+    # Check if customer is responding to wishlist selection
+    if session_store[session_id].get("wishlist_pending") and query.strip().isdigit():
+        idx = int(query.strip()) - 1
+        last_products = session_store[session_id].get("last_products", [])
+        if 0 <= idx < len(last_products):
+            chosen = last_products[idx]
+            if session_id not in wishlist_store:
+                wishlist_store[session_id] = []
+            existing = next((i for i in wishlist_store[session_id] if i["sku"] == chosen["sku"]), None)
+            if existing:
+                return {
+                    "answer": f"{chosen['name']} is already in your wishlist!",
+                    "products": last_products,
+                    "session_id": session_id
+                }
+            wishlist_store[session_id].append({
+                "sku": chosen["sku"],
+                "name": chosen["name"],
+                "price": chosen["price"]
+            })
+            session_store[session_id]["wishlist_pending"] = False
+            return {
+                "answer": f"Saved {chosen['name']} to your wishlist! Want to add more? Just say the number.",
+                "products": last_products,
+                "session_id": session_id,
+                "wishlist": wishlist_store[session_id]
+            }
+
     is_wishlist_intent = any(kw in query.lower() for kw in WISHLIST_KEYWORDS)
     if is_wishlist_intent:
         last_products = session_store[session_id].get("last_products", [])
@@ -262,28 +291,13 @@ def rag_chat(payload: ChatRequest):
                 "products": [],
                 "session_id": session_id
             }
-        top = last_products[0]
-        if session_id not in wishlist_store:
-            wishlist_store[session_id] = []
-        existing = next((i for i in wishlist_store[session_id] if i["sku"] == top["sku"]), None)
-        if existing:
-            return {
-                "answer": f"{top['name']} is already in your wishlist!",
-                "products": last_products,
-                "session_id": session_id
-            }
-        wishlist_store[session_id].append({
-            "sku": top["sku"],
-            "name": top["name"],
-            "price": top["price"]
-        })
+        session_store[session_id]["wishlist_pending"] = True
+        product_list = "\n".join([f"{i+1}. {p['name']} — ${p['price']}" for i, p in enumerate(last_products)])
         return {
-            "answer": f"Saved {top['name']} to your wishlist! You can move it to cart anytime.",
+            "answer": f"Which product would you like to add to your wishlist?\n\n{product_list}\n\nJust reply with the number!",
             "products": last_products,
-            "session_id": session_id,
-            "wishlist": wishlist_store[session_id]
+            "session_id": session_id
         }
-
     # ── Save products to session (after all intent checks) ──
     session_store[session_id]["last_products"] = products
 
