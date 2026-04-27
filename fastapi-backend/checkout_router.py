@@ -56,7 +56,7 @@ def place_order(body: CheckoutRequest):
     # Step 4: Place order
     r = requests.put(
         f"{MAGENTO_URL}/guest-carts/{cart_id}/order",
-        json={"paymentMethod": {"method": "checkmo"}},
+        json={"paymentMethod": {"method": "cashondelivery"}},
         verify=False
     )
     order_id = r.json()
@@ -70,6 +70,6 @@ def place_order(body: CheckoutRequest):
         "message": "Order #" + str(order_id) + " placed successfully!",
         "items": cart,
         "shipping_to": body.street + ", " + body.city,
-        "payment": "Check/Money Order",
+        "payment": "Cash on Delivery",
         "total": sum(i["price"] * i["qty"] for i in cart)
     }
