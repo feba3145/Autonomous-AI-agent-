@@ -12,6 +12,7 @@ from langchain_ollama import OllamaLLM
 from dotenv import load_dotenv
 from address_router import router as address_router
 from auth_router import router as auth_router
+from checkout_router import router as checkout_router
 from mcp_client import mcp
 import urllib3
 urllib3.disable_warnings()
@@ -28,6 +29,7 @@ app.add_middleware(
 )
 app.include_router(address_router)
 app.include_router(auth_router)
+app.include_router(checkout_router)
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
