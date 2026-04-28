@@ -71,6 +71,7 @@ If the customer mentions a trip or activity (like hiking, himalaya, beach, gym),
 understand what kind of products they need (jackets, thermals, hoodies for cold trips etc.)
 and recommend the most relevant products from the context.
 If asked to buy, add to cart or place order, process it immediately."""
+
 # ─── SESSION CLEANUP ───
 def cleanup_sessions():
     while True:
@@ -158,8 +159,7 @@ def rag_chat(payload: ChatRequest):
     query = payload.query
     session_id = payload.session_id
 
-    # Init session
-    # Init session
+    # ── Init session ──
     if session_id not in session_store:
         session_store[session_id] = {
             "history": [],
@@ -169,10 +169,27 @@ def rag_chat(payload: ChatRequest):
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id]["history"]
-    # RAG search
+
+    # ── Early login check for buy intent ──
+    is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
+    if is_buy_intent_early:
+        logged_in = session_store[session_id].get("logged_in", False)
+        if not logged_in:
+            return {
+                "answer": "To complete your purchase, please login first using POST /auth/login with your email and password",
+                "products": [],
+                "session_id": session_id,
+                "requires_login": True
+            }
+
+    # ── RAG search ──
     interpret_res = requests.post(
         "http://localhost:11434/api/generate",
-        json={"model": "llama3.2", "prompt": f"A customer said: '{query}'. List only product keywords to search for (like jacket, thermal, boots). Reply with keywords only, comma separated, no explanation.", "stream": False}
+        json={
+            "model": "llama3.2",
+            "prompt": f"A customer said: '{query}'. List only product keywords to search for (like jacket, thermal, boots). Reply with keywords only, comma separated, no explanation.",
+            "stream": False
+        }
     )
     interpreted_query = interpret_res.json().get("response", query).strip()
     embedding = model.encode(interpreted_query).tolist()
@@ -192,7 +209,7 @@ def rag_chat(payload: ChatRequest):
 
     products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
 
-    # Check real-time stock via MCP
+    # ── Check real-time stock via MCP ──
     in_stock = []
     for p in products:
         try:
@@ -202,6 +219,9 @@ def rag_chat(payload: ChatRequest):
         except:
             in_stock.append(p)
     products = in_stock if in_stock else products
+
+    # ✅ FIX: Save products to session EARLY so all intent checks below can use them
+    session_store[session_id]["last_products"] = products
 
     # ── Delivery intent ──
     is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
@@ -222,16 +242,23 @@ def rag_chat(payload: ChatRequest):
                     "session_id": session_id
                 }
             pass  # unexpected error, fall through to normal flow
+
     # ── Buy intent ──
     is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
     if is_buy_intent:
         last_products = session_store[session_id].get("last_products", [])
+
+        # ✅ FIX: if no usable last_products, fall back to products fetched this request
         if not last_products:
-            return {
-                "answer": "Please search for a product first, then I can add it to your cart!",
-                "products": [],
-                "session_id": session_id
-            }
+            if not products or products[0]["similarity"] < 0.3:
+                return {
+                    "answer": "I couldn't find a product matching that. Could you describe it differently?",
+                    "products": [],
+                    "session_id": session_id
+                }
+            last_products = products
+            session_store[session_id]["last_products"] = products
+
         top = last_products[0]
         if session_id not in cart_store:
             cart_store[session_id] = []
@@ -257,8 +284,7 @@ def rag_chat(payload: ChatRequest):
             "cart_total": round(total, 2)
         }
 
-    # ── Wishlist intent ──
-    # Check if customer is responding to wishlist selection
+    # ── Wishlist intent: handle numeric reply ──
     if session_store[session_id].get("wishlist_pending") and query.strip().isdigit():
         idx = int(query.strip()) - 1
         last_products = session_store[session_id].get("last_products", [])
@@ -286,6 +312,7 @@ def rag_chat(payload: ChatRequest):
                 "wishlist": wishlist_store[session_id]
             }
 
+    # ── Wishlist intent ──
     is_wishlist_intent = any(kw in query.lower() for kw in WISHLIST_KEYWORDS)
     if is_wishlist_intent:
         last_products = session_store[session_id].get("last_products", [])
@@ -302,10 +329,8 @@ def rag_chat(payload: ChatRequest):
             "products": last_products,
             "session_id": session_id
         }
-    # ── Save products to session (after all intent checks) ──
-    session_store[session_id]["last_products"] = products
 
-    # Similarity threshold
+    # ── Similarity threshold ──
     THRESHOLD = 0.5
     if not products or products[0]["similarity"] < THRESHOLD:
         return {
@@ -314,6 +339,7 @@ def rag_chat(payload: ChatRequest):
             "session_id": session_id
         }
 
+    # ── Build prompt with history ──
     context = "\n".join([f"- {r['name']} (SKU: {r['sku']}, Price: ${r['price']:.2f})" for r in products])
 
     history_text = ""
