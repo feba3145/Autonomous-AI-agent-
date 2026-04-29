@@ -14,6 +14,7 @@ from address_router import router as address_router
 from auth_router import router as auth_router
 from checkout_router import router as checkout_router
 from mcp_client import mcp
+from cms_router import router as cms_router
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
@@ -30,6 +31,7 @@ app.add_middleware(
 app.include_router(address_router)
 app.include_router(auth_router)
 app.include_router(checkout_router)
+app.include_router(cms_router)
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
@@ -61,6 +63,7 @@ BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i w
 DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
+POLICY_KEYWORDS = ["return", "refund", "shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
 LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
 
@@ -336,6 +339,11 @@ def rag_chat(payload: ChatRequest):
         }
 
     # ── Similarity threshold ──
+    is_policy = any(kw in query.lower() for kw in POLICY_KEYWORDS)
+    if is_policy:
+        from cms_router import answer_policy, PolicyRequest
+        result = answer_policy(PolicyRequest(query=query))
+        return {"answer": result["title"] + ":\n" + result["answer"], "products": [], "session_id": session_id}
     is_list_address = any(kw in query.lower() for kw in LIST_ADDRESS_KEYWORDS)
     if is_list_address:
         cid = session_store[session_id].get("customer_id", 1)
