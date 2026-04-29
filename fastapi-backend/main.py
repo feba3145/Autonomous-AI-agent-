@@ -183,15 +183,17 @@ def rag_chat(payload: ChatRequest):
             }
 
     # ── RAG search ──
-    interpret_res = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "llama3.2",
-            "prompt": f"A customer said: '{query}'. List only product keywords to search for (like jacket, thermal, boots). Reply with keywords only, comma separated, no explanation.",
-            "stream": False
-        }
-    )
-    interpreted_query = interpret_res.json().get("response", query).strip()
+    try:
+        interpret_res = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "llama3.2", "prompt": f"From: '{query}', reply with ONLY 1-2 product type words like jacket or shoes. No other words.", "stream": False},
+            timeout=10
+        )
+        raw = interpret_res.json().get("response", query).strip()
+        interpreted_query = " ".join(raw.split()[:2]).strip(".,") or query
+    except:
+        interpreted_query = query
+    print(f"[RAG] keywords: {interpreted_query}")
     embedding = model.encode(interpreted_query).tolist()
     conn = get_db()
     cur = conn.cursor()
