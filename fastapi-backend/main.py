@@ -58,8 +58,11 @@ class CartRemove(BaseModel):
 
 # ─── KEYWORDS ───
 BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
-DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my", "my home", "my office", "my address"]
+DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
+ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
+DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
+LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
 
 # ─── SYSTEM PROMPT ───
 SYSTEM_PROMPT = """You are an intelligent shopping assistant.
@@ -333,6 +336,41 @@ def rag_chat(payload: ChatRequest):
         }
 
     # ── Similarity threshold ──
+    is_list_address = any(kw in query.lower() for kw in LIST_ADDRESS_KEYWORDS)
+    if is_list_address:
+        cid = session_store[session_id].get("customer_id", 1)
+        from address_router import list_addresses
+        try:
+            addrs = list_addresses(cid)
+            addr_text = ", ".join([a["label"] + ": " + a["full_address"] for a in addrs])
+            return {"answer": f"Your saved addresses:\n{addr_text}", "products": [], "session_id": session_id}
+        except:
+            return {"answer": "You have no saved addresses yet.", "products": [], "session_id": session_id}
+    is_add_address = any(kw in query.lower() for kw in ADD_ADDRESS_KEYWORDS)
+    if is_add_address:
+        session_store[session_id]["awaiting_address"] = True
+        return {"answer": "Please share your address like this:\nlabel: home\nstreet: 123 MG Road\ncity: Kochi\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id}
+    if any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS): session_store[session_id]["awaiting_address"] = False
+    if session_store[session_id].get("awaiting_address"):
+        try:
+            lines = {l.split(":")[0].strip(): l.split(":",1)[1].strip() for l in query.split("\n") if ":" in l}
+            from address_router import upsert_address, AddressUpsert
+            cid = session_store[session_id].get("customer_id", 1)
+            upsert_address(AddressUpsert(customer_id=cid, label=lines.get("label","home"), full_address=", ".join(filter(None,[lines.get("street"),lines.get("city"),lines.get("state"),lines.get("postal_code")])), street=lines.get("street"), city=lines.get("city"), state=lines.get("state"), postal_code=lines.get("postal_code")))
+            session_store[session_id]["awaiting_address"] = False
+            return {"answer": "Address saved successfully!", "products": [], "session_id": session_id}
+        except Exception as e:
+            return {"answer": f"Could not save: {str(e)}", "products": [], "session_id": session_id}
+    is_delete_address = any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS)
+    if is_delete_address:
+        label = "home" if "home" in query.lower() else "office" if "office" in query.lower() else None
+        if label:
+            from address_router import delete_address
+            cid = session_store[session_id].get("customer_id", 1)
+            delete_address(cid, label)
+            return {"answer": f"Your {label} address has been deleted.", "products": [], "session_id": session_id}
+        else:
+            return {"answer": "Which address to delete? Say delete home or delete office.", "products": [], "session_id": session_id}
     THRESHOLD = 0.5
     if not products or products[0]["similarity"] < THRESHOLD:
         return {
