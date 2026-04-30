@@ -15,6 +15,7 @@ from auth_router import router as auth_router
 from checkout_router import router as checkout_router
 from mcp_client import mcp
 from cms_router import router as cms_router
+from shipment_router import router as shipment_router
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
@@ -32,6 +33,7 @@ app.include_router(address_router)
 app.include_router(auth_router)
 app.include_router(checkout_router)
 app.include_router(cms_router)
+app.include_router(shipment_router, prefix="/shipment", tags=["Shipment"])
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
@@ -64,6 +66,8 @@ DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
 POLICY_KEYWORDS = ["return", "refund", "shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
+TRACKING_KEYWORDS = ["where is my order", "track my order", "order status", "tracking", "shipment status", "where is my package", "track order"]
+ORDER_HISTORY_KEYWORDS = ["my orders", "show my orders", "order history", "past orders", "previous orders", "what did i order"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
 LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
 
@@ -175,9 +179,38 @@ def rag_chat(payload: ChatRequest):
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id]["history"]
+    
+  
+  # ── Early tracking check — must come before buy intent ──
+    import re
+    order_match = re.search(r'\b0+\d+\b', query)
+    is_tracking_early = any(kw in query.lower() for kw in TRACKING_KEYWORDS)
+    if is_tracking_early or (order_match and any(kw in query.lower() for kw in ["track", "where", "status", "shipment"])):
 
-    # ── Early login check for buy intent ──
+        from mcp_client import mcp
+        order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
+        if not order_id:
+            return {"answer": "Please provide your order number.", "products": [], "session_id": session_id}
+        session_store[session_id]["last_order_id"] = order_id
+        result = mcp.get_tracking_info(order_id)
+        tracks = result.get("tracks", [])
+        if not tracks:
+            return {"answer": "Order " + order_id + " is being processed. No shipment yet.", "products": [], "session_id": session_id}
+        t = tracks[0]
+        return {"answer": "Order " + order_id + " status: " + str(result.get("order_status")) + ". Carrier: " + str(t.get("carrier_title")) + ". Tracking: " + str(t.get("tracking_number")), "products": [], "session_id": session_id}
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
+    is_order_history_early = any(kw in query.lower() for kw in ORDER_HISTORY_KEYWORDS)
+    if is_order_history_early:
+        from mcp_client import mcp
+        if not session_store[session_id].get("logged_in", False):
+            return {"answer": "Please login to view your orders.", "products": [], "session_id": session_id}
+        email = session_store[session_id].get("email", "roni_cost@example.com")
+        result = mcp.get_customer_orders(email)
+        orders = result.get("items", [])
+        if not orders:
+            return {"answer": "No orders found for your account.", "products": [], "session_id": session_id}
+        order_list = ", ".join(["Order " + o["increment_id"] + " - " + o["status"] + " - $" + str(o["grand_total"]) for o in orders[:5]])
+        return {"answer": "Your recent orders: " + order_list, "products": [], "session_id": session_id}
     if is_buy_intent_early:
         logged_in = session_store[session_id].get("logged_in", False)
         if not logged_in:
@@ -339,6 +372,90 @@ def rag_chat(payload: ChatRequest):
         }
 
     # ── Similarity threshold ──
+    # ── Tracking intent ──
+    is_tracking = any(kw in query.lower() for kw in TRACKING_KEYWORDS)
+    if is_tracking:
+        order_id = session_store[session_id].get("last_order_id")
+        if not order_id:
+            return {
+                "answer": "Please provide your order number so I can track it for you. For example: 'track order 000000001'",
+                "products": [],
+                "session_id": session_id
+            }
+        from mcp_client import mcp
+        result = mcp.get_tracking_info(order_id)
+        if result.get("error") or not result:
+            return {
+                "answer": f"I couldn't find tracking info for order {order_id}. Please check your order number.",
+                "products": [],
+                "session_id": session_id
+            }
+        tracks = result.get("tracks", [])
+        if not tracks:
+            return {
+                "answer": f"Your order {order_id} is {result.get('order_status', 'being processed')}. No shipment has been created yet.",
+                "products": [],
+                "session_id": session_id
+            }
+        t = tracks[0]
+        return {
+            "answer": f"Your order {order_id} status: {result.get('order_status')}.\nCarrier: {t.get('carrier_title')}\nTracking Number: {t.get('tracking_number')}\nShipped on: {t.get('shipment_date', '')[:10]}",
+            "products": [],
+            "session_id": session_id
+        }
+
+    # ── Order number in query ──
+    import re
+    order_match = re.search(r'\b0+\d+\b', query)
+    if order_match and any(kw in query.lower() for kw in ["track", "order", "where", "status"]):
+        order_id = order_match.group()
+        session_store[session_id]["last_order_id"] = order_id
+        from mcp_client import mcp
+        result = mcp.get_tracking_info(order_id)
+        if result.get("error") or not result:
+            return {
+                "answer": f"I couldn't find order {order_id}. Please check your order number.",
+                "products": [],
+                "session_id": session_id
+            }
+        tracks = result.get("tracks", [])
+        if not tracks:
+            return {
+                "answer": f"Your order {order_id} is currently {result.get('order_status', 'being processed')}. No shipment created yet.",
+                "products": [],
+                "session_id": session_id
+            }
+        t = tracks[0]
+        return {
+            "answer": f"Your order {order_id} status: {result.get('order_status')}.\nCarrier: {t.get('carrier_title')}\nTracking Number: {t.get('tracking_number')}\nShipped on: {t.get('shipment_date', '')[:10]}",
+            "products": [],
+            "session_id": session_id
+        }
+
+    # ── Order history intent ──
+    is_order_history = any(kw in query.lower() for kw in ORDER_HISTORY_KEYWORDS)
+    if is_order_history:
+        email = session_store[session_id].get("email", "roni_cost@example.com")
+        from mcp_client import mcp
+        result = mcp.get_customer_orders(email)
+        orders = result.get("items", [])
+        if not orders:
+            return {
+                "answer": "I couldn't find any orders for your account.",
+                "products": [],
+                "session_id": session_id
+            }
+        order_list = "\n".join([
+            f"• Order {o['increment_id']} — {o['status']} — ${o['grand_total']}"
+            for o in orders[:5]
+        ])
+        return {
+            "answer": f"Here are your recent orders:\n\n{order_list}\n\nSay 'track order 000000001' to get tracking details.",
+            "products": [],
+            "session_id": session_id
+        }
+
+
     is_policy = any(kw in query.lower() for kw in POLICY_KEYWORDS)
     if is_policy:
         from cms_router import answer_policy, PolicyRequest
