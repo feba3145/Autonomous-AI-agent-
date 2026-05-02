@@ -104,4 +104,13 @@ class MagentoMCPClient:
         return self.call_tool("get_shipments_by_order_id", {"order_id": int(order_id)})
 
 
+
+    def cancel_order(self, order_id):
+        return self.call_tool("cancel_order", {"order_id": int(order_id)})
+
+    def create_creditmemo(self, order_id):
+        return self.call_tool("create_creditmemo", {"order_id": int(order_id)})
+
+    def submit_review(self, product_id, rating, review_text, nickname):
+        return self.call_tool("submit_review", {"product_id": int(product_id), "rating": int(rating), "review_text": review_text, "nickname": nickname})
 mcp = MagentoMCPClient()

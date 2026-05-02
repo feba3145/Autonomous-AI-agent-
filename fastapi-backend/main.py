@@ -65,11 +65,14 @@ BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i w
 DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
-POLICY_KEYWORDS = ["return", "refund", "shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
+POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
 TRACKING_KEYWORDS = ["where is my order", "track my order", "order status", "tracking", "shipment status", "where is my package", "track order"]
 ORDER_HISTORY_KEYWORDS = ["my orders", "show my orders", "order history", "past orders", "previous orders", "what did i order"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
 LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
+CANCEL_KEYWORDS = ["cancel my order", "cancel order", "i want to cancel", "stop my order", "cancel this"]
+RETURN_KEYWORDS = ["return", "refund", "i want to return", "return my order", "get refund", "money back"]
+REVIEW_KEYWORDS = ["review", "rate this", "give review", "write review", "feedback", "rate product"]
 
 # ─── SYSTEM PROMPT ───
 SYSTEM_PROMPT = """You are an intelligent shopping assistant.
@@ -199,6 +202,18 @@ def rag_chat(payload: ChatRequest):
         t = tracks[0]
         return {"answer": "Order " + order_id + " status: " + str(result.get("order_status")) + ". Carrier: " + str(t.get("carrier_title")) + ". Tracking: " + str(t.get("tracking_number")), "products": [], "session_id": session_id}
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
+    is_cancel_early = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
+    if is_cancel_early:
+        import re
+        order_match = re.search(r"\b0+\d+\b", query)
+        order_id = order_match.group() if order_match else None
+        if not order_id:
+            return {"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id}
+        from mcp_client import mcp
+        result = mcp.cancel_order(order_id)
+        if result:
+            return {"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id}
+        return {"answer": "Could not cancel order " + order_id + ". It may already be shipped.", "products": [], "session_id": session_id}
     is_order_history_early = any(kw in query.lower() for kw in ORDER_HISTORY_KEYWORDS)
     if is_order_history_early:
         from mcp_client import mcp
@@ -210,8 +225,18 @@ def rag_chat(payload: ChatRequest):
         if not orders:
             return {"answer": "No orders found for your account.", "products": [], "session_id": session_id}
         order_list = ", ".join(["Order " + o["increment_id"] + " - " + o["status"] + " - $" + str(o["grand_total"]) for o in orders[:5]])
-        return {"answer": "Your recent orders: " + order_list, "products": [], "session_id": session_id}
-    if is_buy_intent_early:
+    is_return_early = any(kw in query.lower() for kw in RETURN_KEYWORDS)
+    if is_return_early:
+        import re
+        order_match = re.search(r"\b0+\d+\b", query)
+        order_id = order_match.group() if order_match else None
+        if not order_id:
+            return {"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id}
+        from mcp_client import mcp
+        result = mcp.create_creditmemo(order_id)
+        if result:
+            return {"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id}
+        return {"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id}
         logged_in = session_store[session_id].get("logged_in", False)
         if not logged_in:
             return {
@@ -455,8 +480,49 @@ def rag_chat(payload: ChatRequest):
             "session_id": session_id
         }
 
+    is_cancel = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
+    if is_cancel:
+        from mcp_client import mcp
+        import re
+        order_match = re.search(r"\b0+\d+\b", query)
+        order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
+        if not order_id:
+            return {"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id}
+        result = mcp.cancel_order(order_id)
+        if result and result.get("message") != "You do not have permission":
+            return {"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id}
+        return {"answer": "Could not cancel order " + order_id + ". It may already be shipped or completed.", "products": [], "session_id": session_id}
 
+    is_return = any(kw in query.lower() for kw in RETURN_KEYWORDS)
+    if is_return:
+        from mcp_client import mcp
+        import re
+        order_match = re.search(r"\b0+\d+\b", query)
+        order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
+        if not order_id:
+            return {"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id}
+        result = mcp.create_creditmemo(order_id)
+        if result and not result.get("error"):
+            return {"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id}
+        return {"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id}
     is_policy = any(kw in query.lower() for kw in POLICY_KEYWORDS)
+    is_review = any(kw in query.lower() for kw in REVIEW_KEYWORDS)
+    if is_review:
+        last_products = session_store[session_id].get("last_products", [])
+        if not last_products:
+            return {"answer": "Please search for a product first, then I can help you review it.", "products": [], "session_id": session_id}
+        session_store[session_id]["awaiting_review"] = True
+        top = last_products[0]
+        return {"answer": "Please rate " + top["name"] + " out of 5 and write your review. Reply like: 5 stars - Great product!", "products": last_products, "session_id": session_id}
+    if session_store[session_id].get("awaiting_review") and re.search(r"\d", query):
+        from mcp_client import mcp
+        rating_match = re.search(r"[1-5]", query)
+        rating = int(rating_match.group()) if rating_match else 5
+        top = session_store[session_id].get("last_products", [{}])[0]
+        nickname = session_store[session_id].get("firstname", "Customer")
+        result = mcp.submit_review(top.get("product_id", 1), rating, query, nickname)
+        session_store[session_id]["awaiting_review"] = False
+        return {"answer": "Thank you for your " + str(rating) + " star review! Your feedback has been submitted.", "products": [], "session_id": session_id}
     if is_policy:
         from cms_router import answer_policy, PolicyRequest
         result = answer_policy(PolicyRequest(query=query))
