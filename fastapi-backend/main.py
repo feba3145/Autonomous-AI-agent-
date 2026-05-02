@@ -17,6 +17,7 @@ from mcp_client import mcp
 from cms_router import router as cms_router
 from shipment_router import router as shipment_router
 from webhook_router import router as webhook_router
+from admin_shipment_router import router as admin_shipment_router
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
@@ -36,6 +37,7 @@ app.include_router(checkout_router)
 app.include_router(cms_router)
 app.include_router(shipment_router, prefix="/shipment", tags=["Shipment"])
 app.include_router(webhook_router, tags=["Webhook"])
+app.include_router(admin_shipment_router, tags=["Admin Shipment"])
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}

@@ -178,6 +178,21 @@ const TOOLS = [
     },
   },
   ,{
+    name: "create_shipment",
+    description: "Create a shipment for an order and assign tracking number",
+    inputSchema: {
+      type: "object",
+      properties: {
+        order_id: { type: "integer" },
+        carrier_code: { type: "string" },
+        carrier_title: { type: "string" },
+        tracking_number: { type: "string" },
+        notify: { type: "boolean" }
+      },
+      required: ["order_id", "carrier_code", "carrier_title", "tracking_number"]
+    }
+  }
+  ,{
     name: "cancel_order",
     description: "Cancel a Magento order by order ID",
     inputSchema: { type: "object", properties: { order_id: { type: "integer" } }, required: ["order_id"] }
@@ -331,6 +346,18 @@ async function handleTool(name, args) {
       return magentoRequest("GET", path);
     }
 
+    case "create_shipment": {
+      const shipBody = {
+        items: [],
+        notify: args.notify !== false,
+        tracks: [{
+          carrier_code: args.carrier_code,
+          title: args.carrier_title,
+          track_number: args.tracking_number
+        }]
+      };
+      return magentoRequest("POST", `/order/${args.order_id}/ship`, shipBody);
+    }
     case "cancel_order": {
       return magentoRequest("POST", `/orders/${args.order_id}/cancel`);
     }

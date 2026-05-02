@@ -113,4 +113,10 @@ class MagentoMCPClient:
 
     def submit_review(self, product_id, rating, review_text, nickname):
         return self.call_tool("submit_review", {"product_id": int(product_id), "rating": int(rating), "review_text": review_text, "nickname": nickname})
+
+    def create_shipment(self, order_id, carrier_code, carrier_title, tracking_number, notify=True):
+        return self.call_tool("create_shipment", {"order_id": int(order_id), "carrier_code": carrier_code, "carrier_title": carrier_title, "tracking_number": tracking_number, "notify": notify})
+
+    def add_tracking(self, shipment_id, carrier_code, carrier_title, tracking_number):
+        return self.call_tool("add_shipment_track", {"shipment_id": int(shipment_id), "carrier_code": carrier_code, "title": carrier_title, "track_number": tracking_number})
 mcp = MagentoMCPClient()
