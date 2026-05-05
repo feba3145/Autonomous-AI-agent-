@@ -193,6 +193,18 @@ const TOOLS = [
     }
   }
   ,{
+  ,{
+    name: "apply_coupon",
+    description: "Apply a coupon code to a Magento cart",
+    inputSchema: {
+      type: "object",
+      properties: {
+        cart_id: { type: "string", description: "Magento cart ID" },
+        coupon_code: { type: "string", description: "Coupon code to apply" }
+      },
+      required: ["cart_id", "coupon_code"]
+    }
+  }
     name: "cancel_order",
     description: "Cancel a Magento order by order ID",
     inputSchema: { type: "object", properties: { order_id: { type: "integer" } }, required: ["order_id"] }
@@ -357,6 +369,9 @@ async function handleTool(name, args) {
         }]
       };
       return magentoRequest("POST", `/order/${args.order_id}/ship`, shipBody);
+    }
+    case "apply_coupon": {
+      return magentoRequest("PUT", `/guest-carts/${args.cart_id}/coupons/${args.coupon_code}`);
     }
     case "cancel_order": {
       return magentoRequest("POST", `/orders/${args.order_id}/cancel`);

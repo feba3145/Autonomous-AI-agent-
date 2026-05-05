@@ -74,6 +74,7 @@ TRACKING_KEYWORDS = ["where is my order", "track my order", "order status", "tra
 ORDER_HISTORY_KEYWORDS = ["my orders", "show my orders", "order history", "past orders", "previous orders", "what did i order"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
 LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
+COUPON_KEYWORDS = ["coupon", "promo code", "discount code", "apply coupon", "use code", "voucher", "promo"]
 CANCEL_KEYWORDS = ["cancel my order", "cancel order", "i want to cancel", "stop my order", "cancel this"]
 RETURN_KEYWORDS = ["return", "refund", "i want to return", "return my order", "get refund", "money back"]
 REVIEW_KEYWORDS = ["review", "rate this", "give review", "write review", "feedback", "rate product"]
@@ -207,6 +208,18 @@ def rag_chat(payload: ChatRequest):
         return {"answer": "Order " + order_id + " status: " + str(result.get("order_status")) + ". Carrier: " + str(t.get("carrier_title")) + ". Tracking: " + str(t.get("tracking_number")), "products": [], "session_id": session_id}
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
     is_cancel_early = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
+    is_coupon = any(kw in query.lower() for kw in COUPON_KEYWORDS)
+    if is_coupon:
+        import re
+        coupon_match = re.search(r"\b[A-Z0-9]{4,15}\b", query.upper())
+        if not coupon_match:
+            return {"answer": "Please provide your coupon code. Example: apply coupon H20", "products": [], "session_id": session_id}
+        coupon_code = coupon_match.group()
+        cart = cart_store.get(session_id, [])
+        if not cart:
+            return {"answer": "Your cart is empty. Please add products first before applying a coupon.", "products": [], "session_id": session_id}
+        session_store[session_id]["coupon"] = coupon_code
+        return {"answer": "Coupon " + coupon_code + " has been applied to your cart! The discount will be applied at checkout.", "products": [], "session_id": session_id, "coupon": coupon_code}
     if is_cancel_early:
         import re
         order_match = re.search(r"\b0+\d+\b", query)

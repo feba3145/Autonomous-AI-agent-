@@ -1,0 +1,334 @@
+from fastapi import FastAPI
+import httpx
+import psycopg2
+from pgvector.psycopg2 import register_vector
+from sentence_transformers import SentenceTransformer
+import urllib3
+
+urllib3.disable_warnings()
+
+app = FastAPI()
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Update this token each run ──────────────────────────────
+MAGENTO_TOKEN = "eyJraWQiOiIxIiwiYWxnIjoiSFMyNTYifQ.eyJ1aWQiOjIsInV0eXBpZCI6MiwiaWF0IjoxNzc2MTQxOTQzLCJleHAiOjE3NzYxNDU1NDN9.veYiVu_LDnQ6Oh7dGo2XAzX_MR8v0JIX8LUoOCOhLI0"
+# ───────────────────────────────────────────────────────────
+MAGENTO_URL = "https://172.17.0.1"
+
+DB_CONFIG = {
+    "host": "172.17.0.1",
+    "port": 5432,
+    "database": "aidb",
+    "user": "aiuser",
+    "password": "aipassword"
+}
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+
+@app.get("/")
+def root():
+    return {"message": "AI Shopping Assistant API is running"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/products")
+async def get_products():
+    all_products = []
+    page = 1
+    async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
+        while True:
+            response = await client.get(
+                f"{MAGENTO_URL}/rest/V1/products?searchCriteria[pageSize]=100&searchCriteria[currentPage]={page}",
+                headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+            )
+            data = response.json()
+            items = data.get("items", [])
+            if not items:
+                break
+            all_products.extend(items)
+            total = data.get("total_count", 0)
+            if len(all_products) >= total:
+                break
+            page += 1
+
+    products = []
+    for p in all_products:
+        name = p.get("name", "")
+        sku = p.get("sku", "")
+        price = p.get("price", 0)
+        status = p.get("status", "")
+        product_type = p.get("type_id", "")
+
+        description = ""
+        short_description = ""
+        image = ""
+        category_ids = []
+
+        for attr in p.get("custom_attributes", []):
+            code = attr["attribute_code"]
+            value = attr["value"]
+            if code == "description":
+                description = value
+            elif code == "short_description":
+                short_description = value
+            elif code == "image":
+                image = f"https://magento.test/pub/media/catalog/product{value}"
+            elif code == "category_ids":
+                category_ids = value
+
+        products.append({
+            "id": p.get("id"),
+            "name": name,
+            "sku": sku,
+            "price": price,
+            "status": status,
+            "type": product_type,
+            "short_description": short_description,
+            "description": description,
+            "image": image,
+            "category_ids": category_ids
+        })
+
+    return {
+        "total": len(products),
+        "products": products
+    }
+
+@app.get("/product-count")
+async def product_count():
+    """
+    Fetches total product count from Magento.
+    Same as running:
+    curl -k "https://magento.test/rest/V1/products?searchCriteria[pageSize]=1"
+    But exposed as a clean API endpoint.
+    """
+    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+        response = await client.get(
+            f"{MAGENTO_URL}/rest/V1/products",
+            headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"},
+            params={
+                "searchCriteria[pageSize]": 1,   # only fetch 1 product
+                "searchCriteria[currentPage]": 1  # but total_count is always full
+            }
+        )
+        data = response.json()
+        total = data.get("total_count", 0)
+
+        return {
+            "total_products": total,
+            "message": f"Your Magento store has {total} products"
+        }
+@app.get("/stock/{sku}")
+async def get_stock(sku: str):
+    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+        response = await client.get(
+            f"{MAGENTO_URL}/rest/V1/stockItems/{sku}",
+            headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+        )
+    return response.json()
+
+
+@app.post("/embed-products")
+async def embed_products():
+    all_products = []
+    page = 1
+    async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
+        while True:
+            response = await client.get(
+                f"{MAGENTO_URL}/rest/V1/products?searchCriteria[pageSize]=100&searchCriteria[currentPage]={page}",
+                headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+            )
+            data = response.json()
+            items = data.get("items", [])
+            if not items:
+                break
+            all_products.extend(items)
+            total = data.get("total_count", 0)
+            if len(all_products) >= total:
+                break
+            page += 1
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    register_vector(conn)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM products")
+
+    for product in all_products:
+        name = product.get("name", "")
+        sku = product.get("sku", "")
+        price = product.get("price", 0)
+        description = ""
+        for attr in product.get("custom_attributes", []):
+            if attr["attribute_code"] == "description":
+                description = attr["value"]
+                break
+        text = f"{name}. {description}. Price: ${price}"
+        embedding = model.encode(text).tolist()
+        cur.execute(
+            "INSERT INTO products (product_id, sku, name, description, price, embedding) VALUES (%s, %s, %s, %s, %s, %s)",
+            (product["id"], sku, name, description, price, embedding)
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+    return {"message": f"Embedded {len(all_products)} products successfully"}
+
+
+@app.get("/search")
+async def search_products(query: str):
+    query_embedding = model.encode(query).tolist()
+    conn = psycopg2.connect(**DB_CONFIG)
+    register_vector(conn)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, sku, price, description FROM products ORDER BY embedding <=> %s::vector LIMIT 5",
+        (query_embedding,)
+    )
+    results = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"name": r[0], "sku": r[1], "price": r[2], "description": r[3]} for r in results]
+
+
+@app.get("/chat")
+async def chat(query: str):
+    query_embedding = model.encode(query).tolist()
+    conn = psycopg2.connect(**DB_CONFIG)
+    register_vector(conn)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, sku, price FROM products ORDER BY embedding <=> %s::vector LIMIT 3",
+        (query_embedding,)
+    )
+    results = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    product_context = "\n".join([
+        f"- {r[0]} (SKU: {r[1]}, Price: ${r[2]})"
+        for r in results
+    ])
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            "http://host.docker.internal:11434/api/generate",
+            json={
+                "model": "llama3.2",
+                "prompt": f"You are a helpful shopping assistant. The user asked: '{query}'\n\nAvailable products:\n{product_context}\n\nRecommend the best product in 2-3 sentences.",
+                "stream": False,
+                "options": {
+                    "num_predict": 300
+                }
+            }
+        )
+
+    return {
+        "query": query,
+        "products_found": [{"name": r[0], "sku": r[1], "price": r[2]} for r in results],
+        "ai_response": response.json()["response"]
+    }
+
+
+@app.get("/rag-chat")
+async def rag_chat(query: str):
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+    from langchain_community.vectorstores import PGVector
+    from langchain_community.llms import Ollama
+    from langchain.chains import RetrievalQA
+    from langchain.prompts import PromptTemplate
+
+    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    CONNECTION_STRING = "postgresql+psycopg2://aiuser:aipassword@172.17.0.1:5432/aidb"
+    vectorstore = PGVector(
+        connection_string=CONNECTION_STRING,
+        embedding_function=embeddings,
+        collection_name="products"
+    )
+
+    llm = Ollama(
+        base_url="http://host.docker.internal:11434",
+        model="llama3.2",
+        timeout=300
+    )
+
+    prompt = PromptTemplate(
+        input_variables=["context", "question"],
+        template="""You are a helpful shopping assistant.
+Use the following products to answer the customer question.
+
+Products:
+{context}
+
+Customer question: {question}
+
+Give a helpful recommendation in 2-3 sentences."""
+    )
+
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+        chain_type_kwargs={"prompt": prompt}
+    )
+
+    result = qa_chain.invoke({"query": query})
+    return {
+        "query": query,
+        "answer": result["result"]
+    }
+@app.get("/negotiate")
+async def negotiate(product_sku: str, offered_price: float):
+    # Get product from Magento
+    product_url = f"https://host.docker.internal/rest/V1/products/{product_sku}"
+    headers = {"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+    
+    import requests
+    response = requests.get(product_url, headers=headers, verify=False)
+    product = response.json()
+    original_price = float(product["price"])
+    
+    # Negotiation logic
+    max_discount = 0.10  # 10% max discount allowed
+    min_price = round(original_price * (1 - max_discount), 2)
+    
+    if offered_price >= original_price:
+        message = f"Great! The price is ${original_price}. No negotiation needed!"
+        final_price = original_price
+        status = "accepted"
+    elif offered_price >= min_price:
+        message = f"Deal! I can offer you this for ${offered_price}. That's {round((1 - offered_price/original_price)*100)}% off!"
+        final_price = offered_price
+        status = "accepted"
+    elif offered_price >= min_price * 0.9:
+        # Counter offer
+        counter = round((offered_price + min_price) / 2, 2)
+        message = f"I can't go that low, but how about ${counter}? That's my best offer!"
+        final_price = counter
+        status = "counter"
+    else:
+        message = f"Sorry, I can't go below ${min_price}. That's the lowest I can offer!"
+        final_price = min_price
+        status = "rejected"
+    
+    return {
+        "sku": product_sku,
+        "product_name": product["name"],
+        "original_price": original_price,
+        "offered_price": offered_price,
+        "final_price": final_price,
+        "status": status,
+        "message": message
+    }

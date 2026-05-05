@@ -119,4 +119,7 @@ class MagentoMCPClient:
 
     def add_tracking(self, shipment_id, carrier_code, carrier_title, tracking_number):
         return self.call_tool("add_shipment_track", {"shipment_id": int(shipment_id), "carrier_code": carrier_code, "title": carrier_title, "track_number": tracking_number})
+
+    def apply_coupon(self, cart_id, coupon_code):
+        return self.call_tool("apply_coupon", {"cart_id": str(cart_id), "coupon_code": str(coupon_code)})
 mcp = MagentoMCPClient()

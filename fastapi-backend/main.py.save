@@ -1,0 +1,103 @@
+from fastapi import FastAPI
+import httpx
+import psycopg2
+from pgvector.psycopg2 import register_vector
+from sentence_transformers import SentenceTransformer
+
+app = FastAPI()
+
+MAGENTO_URL = "https://172.17.0.1"
+MAGENTO_TOKEN 
+
+DB_CONFIG = {
+    "host": "172.17.0.1",
+    "port": 5432,
+    "database": "aidb",
+    "user": "aiuser",
+    "password": "aipassword"
+}
+
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+@app.get("/")
+def root():
+    return {"message": "AI Shopping Assistant API is running"}
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.get("/products")
+async def get_products():
+    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+        response = await client.get(
+            f"{MAGENTO_URL}/rest/V1/products?searchCriteria[pageSize]=10",
+            headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+        )
+    return response.json()
+
+@app.get("/stock/{sku}")
+async def get_stock(sku: str):
+    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+        response = await client.get(
+            f"{MAGENTO_URL}/rest/V1/stockItems/{sku}",
+            headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+        )
+    return response.json()
+
+@app.post("/embed-products")
+async def embed_products():
+    async with httpx.AsyncClient(verify=False, timeout=30.0) as client:
+        response = await client.get(
+            f"{MAGENTO_URL}/rest/V1/products?searchCriteria[pageSize]=10",
+            headers={"Authorization": f"Bearer {MAGENTO_TOKEN}"}
+        )
+    products = response.json().get("items", [])
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    register_vector(conn)
+    cur = conn.cursor()
+
+    cur.execute("DELETE FROM products")
+
+    for product in products:
+        name = product.get("name", "")
+        sku = product.get("sku", "")
+        price = product.get("price", 0)
+        description = ""
+        for attr in product.get("custom_attributes", []):
+            if attr["attribute_code"] == "description":
+                description = attr["value"]
+                break
+
+        text = f"{name}. {description}. Price: ${price}"
+        embedding = model.encode(text).tolist()
+
+        cur.execute(
+            "INSERT INTO products (product_id, sku, name, description, price, embedding) VALUES (%s, %s, %s, %s, %s, %s)",
+            (product["id"], sku, name, description, price, embedding)
+        )
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return {"message": f"Embedded {len(products)} products successfully"}
+
+@app.get("/search")
+async def search_products(query: str):
+    query_embedding = model.encode(query).tolist()
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    register_vector(conn)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT name, sku, price, description FROM products ORDER BY embedding <=> %s::vector LIMIT 5",
+        (query_embedding,)
+    )
+    results = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    return [{"name": r[0], "sku": r[1], "price": r[2], "description": r[3]} for r in results]
