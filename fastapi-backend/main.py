@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
@@ -16,13 +18,17 @@ from checkout_router import router as checkout_router
 from mcp_client import mcp
 from cms_router import router as cms_router
 from shipment_router import router as shipment_router
-from webhook_router import router as webhook_router
+#from webhook_router import router as webhook_router
 from admin_shipment_router import router as admin_shipment_router
+from webrtc_router import router as webrtc_router
+from stt_router    import router as stt_router
+#from tts_router    import router as tts_router
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
 
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="/root/magento/fastapi-backend/static"), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -36,9 +42,11 @@ app.include_router(auth_router)
 app.include_router(checkout_router)
 app.include_router(cms_router)
 app.include_router(shipment_router, prefix="/shipment", tags=["Shipment"])
-app.include_router(webhook_router, tags=["Webhook"])
+#app.include_router(webhook_router, tags=["Webhook"])
 app.include_router(admin_shipment_router, tags=["Admin Shipment"])
-
+app.include_router(webrtc_router)
+app.include_router(stt_router)
+#app.include_router(tts_router)
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
 SESSION_TIMEOUT = 1800
@@ -65,7 +73,7 @@ class CartRemove(BaseModel):
     sku: str
 
 # ─── KEYWORDS ───
-BUY_KEYWORDS = ["buy", "purchase", "order", "add to cart", "i want to buy", "i want this", "get this", "checkout"]
+BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "i want this", "get this"]
 DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
@@ -73,8 +81,13 @@ POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about", 
 TRACKING_KEYWORDS = ["where is my order", "track my order", "order status", "tracking", "shipment status", "where is my package", "track order"]
 ORDER_HISTORY_KEYWORDS = ["my orders", "show my orders", "order history", "past orders", "previous orders", "what did i order"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
+EDIT_ADDRESS_KEYWORDS = [
+    "edit address", "update address", "change address", "modify address",
+    "edit my", "update my address", "change my address"
+]
 LIST_ADDRESS_KEYWORDS = ["my addresses", "show addresses", "list addresses", "saved addresses", "what addresses"]
 COUPON_KEYWORDS = ["coupon", "promo code", "discount code", "apply coupon", "use code", "voucher", "promo"]
+CHECKOUT_KEYWORDS = ["checkout", "place order", "confirm order", "place my order", "order now", "buy now", "complete order", "proceed to checkout"]
 CANCEL_KEYWORDS = ["cancel my order", "cancel order", "i want to cancel", "stop my order", "cancel this"]
 RETURN_KEYWORDS = ["return", "refund", "i want to return", "return my order", "get refund", "money back"]
 REVIEW_KEYWORDS = ["review", "rate this", "give review", "write review", "feedback", "rate product"]
@@ -117,7 +130,7 @@ def get_db():
 # ─── BASIC ENDPOINTS ───
 @app.get("/")
 def root():
-    return {"status": "AI Shopping Assistant API is running"}
+    return FileResponse("/root/shopai.html")
 
 @app.get("/health")
 def health():
@@ -130,7 +143,7 @@ def search(q: str = "jacket", limit: int = 5):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT sku, name, price,
+        SELECT sku, name, price, image,
                1 - (embedding <=> %s::vector) AS similarity
         FROM products
         WHERE price > 0
@@ -140,7 +153,7 @@ def search(q: str = "jacket", limit: int = 5):
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
+    return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
 
 # ─── CHAT ───
 @app.post("/chat")
@@ -150,7 +163,7 @@ def chat(payload: ChatRequest):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT sku, name, price,
+        SELECT sku, name, price, image,
                1 - (embedding <=> %s::vector) AS similarity
         FROM products
         WHERE price > 0
@@ -168,7 +181,7 @@ def chat(payload: ChatRequest):
     )
     return {
         "response": res.json().get("response", ""),
-        "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0)} for r in rows]
+        "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
     }
 
 # ─── RAG CHAT ───
@@ -267,11 +280,12 @@ def rag_chat(payload: ChatRequest):
     try:
         interpret_res = requests.post(
             "http://localhost:11434/api/generate",
-            json={"model": "llama3.2", "prompt": f"From: '{query}', reply with ONLY 1-2 product type words like jacket or shoes. No other words.", "stream": False},
-            timeout=10
+            json={"model": "llama3.2", "prompt": f"Extract the main product type from this query: '{query}'. Reply with ONLY the exact product words from the query, nothing else. No explanation.", "stream": False},
+            timeout=180
         )
         raw = interpret_res.json().get("response", query).strip()
-        interpreted_query = " ".join(raw.split()[:2]).strip(".,") or query
+        interpreted_query = " ".join(raw.split()[:3]).strip(".,") or query
+        if len(interpreted_query) < 3: interpreted_query = query
     except:
         interpreted_query = query
     print(f"[RAG] keywords: {interpreted_query}")
@@ -279,7 +293,7 @@ def rag_chat(payload: ChatRequest):
     conn = get_db()
     cur = conn.cursor()
     cur.execute("""
-        SELECT sku, name, price,
+        SELECT sku, name, price, image,
                1 - (embedding <=> %s::vector) AS similarity
         FROM products
         WHERE price > 0
@@ -290,7 +304,7 @@ def rag_chat(payload: ChatRequest):
     cur.close()
     conn.close()
 
-    products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[3])} for r in rows]
+    products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
 
     # ── Check real-time stock via MCP ──
     in_stock = []
@@ -306,43 +320,116 @@ def rag_chat(payload: ChatRequest):
     # ✅ FIX: Save products to session EARLY so all intent checks below can use them
     session_store[session_id]["last_products"] = products
 
-    # ── Delivery intent ──
+    # ── Delivery intent (smart — also handles add+deliver in one message) ──
     is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
+    is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS)
     if is_delivery_intent:
+        cid = session_store[session_id].get("customer_id", 0)
+        if not cid:
+            return {
+                "answer": "Please login first so I can find your saved addresses! 🔐",
+                "products": [], "session_id": session_id, "requires_login": True
+            }
+        # ── If user also wants to add to cart, do that first ──
+        if is_also_buy:
+            last_products = session_store[session_id].get("last_products", [])
+            if last_products:
+                chosen_idx = max(0, min(llm_index, len(last_products) - 1))
+                top = last_products[chosen_idx]
+                if session_id not in cart_store:
+                    cart_store[session_id] = []
+                existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
+                if existing:
+                    existing["qty"] += 1
+                else:
+                    cart_store[session_id].append({
+                        "sku": top["sku"],
+                        "name": top["name"],
+                        "price": top["price"],
+                        "qty": 1
+                    })
+        # ── Now resolve delivery address ──
         try:
             from address_router import resolve_address, ResolveRequest
-            addr = resolve_address(ResolveRequest(customer_id=1, query=query))
+            addr = resolve_address(ResolveRequest(customer_id=cid, query=query))
+            cart = cart_store.get(session_id, [])
+            total = sum(i["price"] * i["qty"] for i in cart)
+            item_msg = f"Added **{top['name']}** to cart. " if is_also_buy and last_products else ""
             return {
-                "answer": f"I'll deliver to your {addr['label']}: {addr['full_address']}. Shall I confirm this order?",
+                "answer": f"{item_msg}I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**. Say **yes** to place the order!",
                 "products": session_store[session_id].get("last_products", []),
-                "session_id": session_id
+                "session_id": session_id,
+                "cart": cart,
+                "cart_total": round(total, 2),
+                "resolved_address": addr
             }
         except Exception as e:
-            if "404" in str(e) or "No saved address" in str(e):
+            err = str(e)
+            if "404" in err or "No saved address" in err or "matched" in err:
+                label_hint = ""
+                for kw in DELIVERY_KEYWORDS:
+                    if kw in query.lower():
+                        rest = query.lower().split(kw, 1)[-1].strip()
+                        label_hint = rest.split()[0] if rest else ""
+                        break
                 return {
-                    "answer": "I don't have a saved address for you. Could you please provide your delivery address?",
+                    "answer": f"I don't have a saved address for **{label_hint or 'that location'}** yet. Please click the 📍 button above to add this address!",
                     "products": [],
-                    "session_id": session_id
+                    "session_id": session_id,
+                    "requires_address": True,
+                    "suggested_label": label_hint
                 }
-            pass  # unexpected error, fall through to normal flow
+            pass
+    # ── LLM Intent Detection ──
+    last_products = session_store[session_id].get("last_products", [])
+    try:
+        product_list_text = ", ".join([f"{i+1}. {p['name']}" for i, p in enumerate(last_products)]) if last_products else "none"
+        intent_prompt = f"""Classify intent. Products: {product_list_text}. Message: "{query}"
+Reply JSON only: {{"intent":"add_to_cart","index":0}} or {{"intent":"search","index":-1}} or {{"intent":"other","index":-1}}
+index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants to buy/add/get/order/deliver."""
+        intent_res = requests.post(
+            "http://localhost:11434/api/generate",
+            json={"model": "llama3.2", "prompt": intent_prompt, "stream": False},
+            timeout=180
+        )
+        import json as _json, re as _re
+        raw_intent = intent_res.json().get("response", "{}").strip()
+        json_match = _re.search(r'\{.*\}', raw_intent, _re.DOTALL)
+        intent_data = _json.loads(json_match.group()) if json_match else {}
+    except Exception as _e:
+        print(f"[INTENT ERROR] {_e}")
+        intent_data = {}
+
+    llm_intent = intent_data.get("intent", "other")
+    llm_index = int(intent_data.get("index", 0))
 
     # ── Buy intent ──
-    is_buy_intent = any(kw in query.lower() for kw in BUY_KEYWORDS)
+    is_buy_intent = llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)
     if is_buy_intent:
+        if not session_store[session_id].get("logged_in", False):
+            return {
+                "answer": "Please login or register first to add items to your cart! 🔐",
+                "products": session_store[session_id].get("last_products", []),
+                "session_id": session_id,
+                "requires_login": True
+            }
         last_products = session_store[session_id].get("last_products", [])
+        if not last_products:
+            last_products = products
 
         # ✅ FIX: if no usable last_products, fall back to products fetched this request
         if not last_products:
             if not products or products[0]["similarity"] < 0.3:
                 return {
-                    "answer": "I couldn't find a product matching that. Could you describe it differently?",
+                    "answer": "Please search for a product first, then say add to cart! For example: i need tote bag",
                     "products": [],
                     "session_id": session_id
                 }
             last_products = products
             session_store[session_id]["last_products"] = products
 
-        top = last_products[0]
+        chosen_idx = max(0, min(llm_index, len(last_products) - 1))
+        top = last_products[chosen_idx]
         if session_id not in cart_store:
             cart_store[session_id] = []
         existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
@@ -360,7 +447,7 @@ def rag_chat(payload: ChatRequest):
         history.append({"role": "human", "content": query})
         history.append({"role": "assistant", "content": f"Added {top['name']} to your cart!"})
         return {
-            "answer": f"Added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Would you like to checkout or continue shopping?",
+            "answer": f"Added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Say deliver to my home or office address to place order with Cash on Delivery!",
             "products": last_products,
             "session_id": session_id,
             "cart": cart,
@@ -546,14 +633,24 @@ def rag_chat(payload: ChatRequest):
         return {"answer": result["title"] + ":\n" + result["answer"], "products": [], "session_id": session_id}
     is_list_address = any(kw in query.lower() for kw in LIST_ADDRESS_KEYWORDS)
     if is_list_address:
-        cid = session_store[session_id].get("customer_id", 1)
+        cid = session_store[session_id].get("customer_id", 0)
         from address_router import list_addresses
         try:
             addrs = list_addresses(cid)
-            addr_text = ", ".join([a["label"] + ": " + a["full_address"] for a in addrs])
-            return {"answer": f"Your saved addresses:\n{addr_text}", "products": [], "session_id": session_id}
+            lines = []
+            for a in addrs:
+                default_tag = " ⭐" if a["is_default"] else ""
+                lines.append(f"• **{a['display_label']}**{default_tag}: {a['full_address']}")
+            addr_text = "\n".join(lines)
+            return {
+                "answer": f"Your saved addresses:\n\n{addr_text}\n\nSay **'deliver to my [label]'** to use one!",
+                "products": [], "session_id": session_id
+            }
         except:
-            return {"answer": "You have no saved addresses yet.", "products": [], "session_id": session_id}
+            return {
+                "answer": "You have no saved addresses yet. Click the 📍 button to add one!",
+                "products": [], "session_id": session_id
+            }
     is_add_address = any(kw in query.lower() for kw in ADD_ADDRESS_KEYWORDS)
     if is_add_address:
         session_store[session_id]["awaiting_address"] = True
@@ -563,7 +660,7 @@ def rag_chat(payload: ChatRequest):
         try:
             lines = {l.split(":")[0].strip(): l.split(":",1)[1].strip() for l in query.split("\n") if ":" in l}
             from address_router import upsert_address, AddressUpsert
-            cid = session_store[session_id].get("customer_id", 1)
+            cid = session_store[session_id].get("customer_id", 0)
             upsert_address(AddressUpsert(customer_id=cid, label=lines.get("label","home"), full_address=", ".join(filter(None,[lines.get("street"),lines.get("city"),lines.get("state"),lines.get("postal_code")])), street=lines.get("street"), city=lines.get("city"), state=lines.get("state"), postal_code=lines.get("postal_code")))
             session_store[session_id]["awaiting_address"] = False
             return {"answer": "Address saved successfully!", "products": [], "session_id": session_id}
@@ -571,16 +668,95 @@ def rag_chat(payload: ChatRequest):
             return {"answer": f"Could not save: {str(e)}", "products": [], "session_id": session_id}
     is_delete_address = any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS)
     if is_delete_address:
-        label = "home" if "home" in query.lower() else "office" if "office" in query.lower() else None
-        if label:
-            from address_router import delete_address
-            cid = session_store[session_id].get("customer_id", 1)
-            delete_address(cid, label)
-            return {"answer": f"Your {label} address has been deleted.", "products": [], "session_id": session_id}
+        cid = session_store[session_id].get("customer_id", 0)
+        from address_router import list_addresses, delete_address
+        try:
+            addrs = list_addresses(cid)
+        except:
+            addrs = []
+        matched_label = None
+        for a in addrs:
+            if a["label"] in query.lower() or a["display_label"].lower() in query.lower():
+                matched_label = a["label"]
+                break
+        if matched_label:
+            delete_address(cid, matched_label)
+            return {
+                "answer": f"Your **{matched_label.title()}** address has been deleted.",
+                "products": [], "session_id": session_id
+            }
         else:
-            return {"answer": "Which address to delete? Say delete home or delete office.", "products": [], "session_id": session_id}
-    THRESHOLD = 0.5
-    if not products or products[0]["similarity"] < THRESHOLD:
+            label_list = ", ".join([f"'{a['display_label']}'" for a in addrs]) if addrs else "none saved"
+            return {
+                "answer": f"Which address to delete? Your saved labels: {label_list}. Say e.g. *delete my home address*.",
+                "products": [], "session_id": session_id
+            }
+    is_edit_address = any(kw in query.lower() for kw in EDIT_ADDRESS_KEYWORDS)
+    if is_edit_address:
+        return {
+            "answer": "To edit an address, click the 📍 button in the header, select the address card and click **Edit**.",
+            "products": [], "session_id": session_id,
+            "open_address_manager": True
+        }
+    # ── Auto Checkout intent ──
+    is_checkout = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
+    is_deliver = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
+    if is_checkout or is_deliver:
+        if not session_store[session_id].get("logged_in", False):
+            return {"answer": "Please login first so I can place your order! Click the login button or say your email.", "products": [], "session_id": session_id, "requires_login": True}
+        cart = cart_store.get(session_id, [])
+        if not cart:
+            return {"answer": "Your cart is empty! Tell me what you want to buy first.", "products": [], "session_id": session_id}
+        cid = session_store[session_id].get("customer_id", 1)
+        # Detect address preference
+        addr_label = "home"
+        if "office" in query.lower():
+            addr_label = "office"
+        elif "home" in query.lower():
+            addr_label = "home"
+        # Fetch saved addresses
+        try:
+            from address_router import list_addresses
+            addrs = list_addresses(cid)
+            addr = next((a for a in addrs if a["label"].lower() == addr_label), addrs[0] if addrs else None)
+        except:
+            addr = None
+        if not addr:
+            return {"answer": "I could not find your saved address. Please say: add address\nlabel: home\nstreet: your street\ncity: your city\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id}
+        # Place order via checkout router
+        try:
+            from checkout_router import place_order, CheckoutRequest
+            email = session_store[session_id].get("email", "")
+            firstname = session_store[session_id].get("firstname", "Customer")
+            lastname = session_store[session_id].get("lastname", "")
+            req = CheckoutRequest(
+                session_id=session_id,
+                email=email,
+                firstname=firstname,
+                lastname=lastname,
+                street=addr.get("street", addr.get("full_address","")),
+                city=addr.get("city", "Kochi"),
+                postcode=addr.get("postal_code", "682001"),
+                telephone=session_store[session_id].get("telephone", "9999999999"),
+                region_code="KL",
+                country_id="IN"
+            )
+            result = place_order(req)
+            cart_store[session_id] = []
+            items_text = ", ".join([i["name"] for i in result["items"]])
+            return {
+                "products": [],
+                "session_id": session_id,
+                "cart": [],
+                "cart_total": 0
+            }
+        except Exception as e:
+            return {"answer": f"Could not place order: {str(e)}. Please try again.", "products": [], "session_id": session_id}
+
+    THRESHOLD = 0.3
+    if llm_intent == "add_to_cart":
+        pass
+    elif not products or products[0]["similarity"] < THRESHOLD:
         return {
             "answer": "I'm sorry, I couldn't find any products matching your request in our catalog. Could you try describing what you're looking for differently? For example, try searching for jackets, hoodies, tees, or workout gear.",
             "products": [],
@@ -604,7 +780,7 @@ Previous Conversation:
 Customer: {query}
 Assistant:"""
 
-    llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434")
+    llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434", timeout=300)
     answer = llm.invoke(prompt)
 
     history.append({"role": "human", "content": query})
@@ -622,11 +798,11 @@ def get_products(limit: int = 20, page: int = 1):
     conn = get_db()
     cur = conn.cursor()
     offset = (page - 1) * limit
-    cur.execute("SELECT sku, name, price FROM products WHERE price > 0 LIMIT %s OFFSET %s", (limit, offset))
+    cur.execute("SELECT sku, name, price, image FROM products WHERE price > 0 LIMIT %s OFFSET %s", (limit, offset))
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [{"sku": r[0], "name": r[1], "price": float(r[2])} for r in rows]
+    return [{"sku": r[0], "name": r[1], "price": float(r[2]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
 
 @app.get("/product-count")
 def product_count():
@@ -764,3 +940,15 @@ def wishlist_move_to_cart(item: CartRemove):
         "cart": cart_store[sid],
         "wishlist": wishlist_store[sid]
     }
+
+from fastapi.responses import StreamingResponse, FileResponse
+import httpx
+
+@app.get("/media/{path:path}")
+async def proxy_image(path: str):
+    import os
+    from fastapi.responses import FileResponse, Response
+    local = f"/root/magento/fastapi-backend/static/media/{path}"
+    if os.path.exists(local):
+        return FileResponse(local)
+    return Response(status_code=404)
