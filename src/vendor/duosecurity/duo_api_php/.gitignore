@@ -1,6 +1,0 @@
-build
-vendor
-*.swp
-*.swo
-.idea
-.phpunit.result.cache

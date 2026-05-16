@@ -1,5 +1,13 @@
+src/
+vendor/
+node_modules/
+*.log
 __pycache__/
 *.pyc
-*.pyo
 .env
-*.log
+static/media/
+*.jpg
+*.png
+*.gif
+*.zip
+*.tar.gz
