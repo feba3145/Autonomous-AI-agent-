@@ -153,7 +153,7 @@ def search(q: str = "jacket", limit: int = 5):
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
+    return [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": r[3] if r[3] else None} for r in rows]
 
 # ─── CHAT ───
 @app.post("/chat")
@@ -181,7 +181,7 @@ def chat(payload: ChatRequest):
     )
     return {
         "response": res.json().get("response", ""),
-        "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
+        "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "image": r[3] if r[3] else None} for r in rows]
     }
 
 # ─── RAG CHAT ───
@@ -304,7 +304,7 @@ def rag_chat(payload: ChatRequest):
     cur.close()
     conn.close()
 
-    products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
+    products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": r[3] if r[3] else None} for r in rows]
 
     # ── Check real-time stock via MCP ──
     in_stock = []
@@ -802,7 +802,7 @@ def get_products(limit: int = 20, page: int = 1):
     rows = cur.fetchall()
     cur.close()
     conn.close()
-    return [{"sku": r[0], "name": r[1], "price": float(r[2]), "image": f"http://172.21.249.153:8002{r[3]}" if r[3] else None} for r in rows]
+    return [{"sku": r[0], "name": r[1], "price": float(r[2]), "image": r[3] if r[3] else None} for r in rows]
 
 @app.get("/product-count")
 def product_count():
