@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ShopAI ✨</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#09090f;--bg2:#0f1018;--bg3:#14161f;--bg4:#1a1d28;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e2d9cc;--muted:#6b6560;--hint:#3a3830;
+  --gold:#f5a623;--goldd:#c4831a;--gold-bg:rgba(245,166,35,0.1);
+  --red:#f87171;--green:#22c55e;
+  --r:10px;--r2:14px;--r3:18px;
+}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);height:100dvh;display:flex;flex-direction:column;overflow:hidden;} 
+.icon{font-family:'Material Symbols Outlined';font-size:20px;line-height:1;user-select:none;font-variation-settings:'FILL' 0,'wght' 400}
+.icon.fill{font-variation-settings:'FILL' 1,'wght' 400}
+
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:56px;background:rgba(9,9,15,.96);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10;}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#fff;}.logo span{color:var(--gold);}
+.status-pill{display:flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);font-size:10px;font-weight:700;color:var(--green);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.hbtns{display:flex;gap:4px;}
+.icon-btn{width:38px;height:38px;border-radius:10px;border:none;background:transparent;color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;position:relative;transition:background .15s,color .15s;}
+.icon-btn:hover{background:var(--bg4);color:var(--text);}
+.badge{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:99px;background:var(--gold);color:#000;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+
+/* ── Layout ── */
+.app-body{display:flex;flex:1;overflow:hidden;} 
+.chat-wrap{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;} 
+
+/* ── Messages ── */
+.messages{flex:1;overflow-y:scroll;padding:20px 16px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth;}
+.messages::-webkit-scrollbar{width:4px;}.messages::-webkit-scrollbar-thumb{background:var(--hint);border-radius:99px;}
+.msg-row{display:flex;gap:10px;align-items:flex-start;animation:msgIn .22s ease;}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.msg-row.user{flex-direction:row-reverse;}
+.avatar{width:32px;height:32px;border-radius:99px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;}
+.avatar.aria{background:var(--gold);color:#000;}.avatar.user{background:var(--bg4);color:var(--text);}
+.bubble{max-width:76%;padding:12px 16px;border-radius:18px;font-size:14px;line-height:1.65;}
+.bubble.aria{background:var(--bg3);border:1px solid var(--border);border-radius:18px 18px 18px 4px;}
+.bubble.user{background:var(--gold);color:#000;font-weight:500;border-radius:18px 18px 4px 18px;}
+.bubble b{font-weight:700;}
+.typing-dots{display:flex;gap:4px;align-items:center;padding:4px 0;}
+.typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:bounce .9s infinite;}
+.typing-dots span:nth-child(2){animation-delay:.15s;}.typing-dots span:nth-child(3){animation-delay:.3s;}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* ── Products ── */
+.product-row{display:flex;gap:10px;overflow-x:auto;padding:4px 0 12px 0;}
+.product-row::-webkit-scrollbar{height:3px;}.product-row::-webkit-scrollbar-thumb{background:var(--hint);border-radius:99px;}
+.pcard{min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-shrink:0;transition:border-color .2s,transform .2s;}
+.pcard:hover{border-color:rgba(245,166,35,.4);transform:translateY(-2px);}
+.pimg{width:100%;height:200px;background:var(--bg4);overflow:visible;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:32px;}
+.pinfo{padding:10px;}
+.pname{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;} 
+.pprice{font-size:14px;font-weight:700;color:var(--gold);}
+.pbtns{display:flex;gap:6px;margin-top:8px;}
+.btn-add{flex:1;padding:6px;border-radius:7px;border:none;background:var(--gold);color:#000;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:3px;transition:opacity .15s;}
+.btn-add:hover{opacity:.85;}
+.btn-wish{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:var(--bg4);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.btn-wish:hover,.btn-wish.active{border-color:var(--red);color:var(--red);}
+
+/* ── Chips ── */
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0;}
+.chip{padding:6px 14px;border-radius:99px;border:1px solid var(--border);background:var(--bg3);color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;}
+.chip:hover{border-color:rgba(245,166,35,.5);color:var(--gold);}
+
+/* ── Input ── */
+.input-area{padding:12px 16px 20px;background:linear-gradient(to top,var(--bg) 60%,transparent);flex-shrink:0;}
+.input-box{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:14px;padding:6px 6px 6px 14px;transition:border-color .2s;}
+.input-box:focus-within{border-color:rgba(245,166,35,.4);}
+.input-box input{flex:1;background:none;border:none;outline:none;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);}
+.input-box input::placeholder{color:var(--hint);}
+.send-btn{width:38px;height:38px;border-radius:10px;border:none;background:var(--gold);color:#000;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s;}
+.send-btn:hover{opacity:.85;}.send-btn:disabled{opacity:.4;}
+
+/* ── Right panel ── */
+.right-panel{width:280px;flex-shrink:0;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;}
+@media(max-width:900px){.right-panel{display:none;}}
+.panel-tabs{display:flex;border-bottom:1px solid var(--border);}
+.tab-btn{flex:1;padding:12px 8px;border:none;background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:color .15s;}
+.tab-btn.active{color:var(--gold);border-bottom-color:var(--gold);}
+.panel-body{flex:1;overflow-y:auto;padding:12px;}
+.panel-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--hint);gap:8px;font-size:13px;}
+.cart-item{display:flex;gap:10px;align-items:center;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;}
+.cname{font-size:12px;font-weight:600;}.cprice{font-size:13px;font-weight:700;color:var(--gold);}
+.qty-ctrl{display:flex;align-items:center;gap:6px;margin-top:4px;}
+.qty-btn{width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--bg4);color:var(--text);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.rm-btn{margin-left:auto;width:24px;height:24px;border-radius:6px;border:none;background:none;color:var(--hint);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+.rm-btn:hover{color:var(--red);}
+.cart-footer{padding:12px;border-top:1px solid var(--border);}
+.total-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+.total-val{font-size:18px;font-weight:800;color:var(--gold);}
+.checkout-btn{width:100%;padding:11px;border-radius:10px;border:none;background:var(--gold);color:#000;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s;}
+.checkout-btn:hover{opacity:.88;}
+
+/* ── Modals ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(8px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
+@media(min-width:600px){.modal-overlay{align-items:center;}}
+.modal-overlay.hidden{display:none;}
+.modal{background:var(--bg3);border:1px solid var(--border2);border-radius:20px 20px 0 0;padding:24px 20px 32px;width:100%;max-width:520px;max-height:92dvh;overflow-y:auto;}
+@media(min-width:600px){.modal{border-radius:20px;padding:28px;}}
+.modal-title{font-family:'Syne',sans-serif;font-size:21px;font-weight:800;margin-bottom:4px;}
+.modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px;}
+.form-label{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px;}
+.form-input{width:100%;padding:11px 14px;border-radius:10px;background:var(--bg4);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s;}
+.form-input:focus{border-color:rgba(245,166,35,.5);}
+.form-select{width:100%;padding:11px 14px;border-radius:10px;background:var(--bg4);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:14px;appearance:none;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.modal-btn{width:100%;padding:12px;border-radius:10px;border:none;background:var(--gold);color:#000;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:4px;transition:opacity .15s;}
+.modal-btn:hover{opacity:.88;}.modal-btn:disabled{opacity:.45;cursor:not-allowed;}
+.modal-btn.danger{background:#3a1a1a;color:var(--red);border:1px solid rgba(248,113,113,.2);}
+.modal-btn.danger:hover{background:rgba(248,113,113,.15);}
+.modal-btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--border);}
+.modal-btn.ghost:hover{background:var(--bg4);}
+.modal-err{font-size:12px;color:var(--red);margin-top:8px;text-align:center;min-height:18px;}
+.modal-success{font-size:12px;color:var(--green);margin-top:8px;text-align:center;min-height:18px;}
+
+/* ── Toast ── */
+.toast{position:fixed;top:68px;right:16px;z-index:300;background:var(--bg4);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;transform:translateX(130%);transition:transform .3s ease;}
+.toast.show{transform:none;}.toast .ok{color:var(--green);}.toast .err{color:var(--red);}
+
+/* ════════════════════════════════════
+   ADDRESS MANAGER STYLES
+════════════════════════════════════ */
+
+/* Label picker grid */
+.label-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;}
+@media(max-width:400px){.label-grid{grid-template-columns:repeat(3,1fr);}}
+.label-card{background:var(--bg4);border:1px solid var(--border);border-radius:12px;padding:10px 6px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:all .15s;position:relative;}
+.label-card:hover{border-color:rgba(245,166,35,.4);}
+.label-card.active{border-color:var(--gold);background:var(--gold-bg);}
+.label-card .lc-icon{font-size:22px;color:var(--muted);}
+.label-card.active .lc-icon{color:var(--gold);}
+.label-card .lc-text{font-size:10px;font-weight:700;color:var(--muted);text-align:center;line-height:1.2;}
+.label-card.active .lc-text{color:var(--gold);}
+
+/* Custom label input area */
+.custom-label-row{display:flex;gap:8px;margin-bottom:14px;}
+.custom-label-row input{flex:1;padding:9px 12px;border-radius:10px;background:var(--bg4);border:1px solid var(--border);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+.custom-label-row input:focus{border-color:rgba(245,166,35,.5);}
+.custom-label-row input::placeholder{color:var(--hint);}
+.custom-label-row button{padding:9px 14px;border-radius:10px;border:1px solid var(--gold);background:var(--gold-bg);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
+
+/* Custom chips */
+.custom-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+.custom-chip{padding:5px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg4);color:var(--muted);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;}
+.custom-chip:hover{border-color:rgba(245,166,35,.4);color:var(--gold);}
+
+/* ── Address Manager Panel ── */
+#addr-manager-modal .modal{max-width:620px;}
+.addr-manager-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+@media(max-width:500px){.addr-manager-wrap{grid-template-columns:1fr;}}
+
+.addr-profile-card{background:var(--bg4);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;transition:all .18s;position:relative;display:flex;flex-direction:column;gap:6px;}
+.addr-profile-card:hover{border-color:rgba(245,166,35,.35);transform:translateY(-1px);}
+.addr-profile-card.selected{border-color:var(--gold);background:var(--gold-bg);}
+.addr-profile-card.add-new{border-style:dashed;justify-content:center;align-items:center;min-height:110px;flex-direction:column;gap:6px;}
+.addr-profile-card.add-new:hover{border-color:var(--gold);color:var(--gold);}
+.apc-top{display:flex;align-items:center;gap:8px;}
+.apc-icon-wrap{width:36px;height:36px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.addr-profile-card.selected .apc-icon-wrap{background:rgba(245,166,35,.15);border-color:rgba(245,166,35,.3);}
+.apc-icon{font-size:18px;color:var(--muted);}
+.addr-profile-card.selected .apc-icon{color:var(--gold);}
+.apc-label{font-size:13px;font-weight:700;flex:1;}
+.apc-default-badge{font-size:9px;font-weight:800;padding:2px 7px;border-radius:99px;background:rgba(245,166,35,.15);color:var(--gold);border:1px solid rgba(245,166,35,.3);}
+.apc-addr{font-size:11px;color:var(--muted);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;} 
+.apc-btns{display:flex;gap:6px;margin-top:4px;}
+.apc-btn{padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;}
+.apc-btn:hover{border-color:var(--border2);color:var(--text);}
+.apc-btn.del:hover{border-color:rgba(248,113,113,.3);color:var(--red);}
+.apc-btn.set-default:hover{border-color:rgba(245,166,35,.4);color:var(--gold);}
+.apc-selected-ring{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;}
+.addr-profile-card.selected .apc-selected-ring{border-color:var(--gold);background:var(--gold);}
+.apc-check{width:8px;height:8px;border-radius:50%;background:#000;display:none;}
+.addr-profile-card.selected .apc-check{display:block;}
+
+/* Steps in form */
+.step-indicator{display:flex;gap:6px;align-items:center;margin-bottom:20px;}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--hint);transition:background .2s;}
+.step-dot.active{background:var(--gold);width:22px;border-radius:4px;}
+.step-dot.done{background:var(--green);}
+
+/* Auth modal */
+.auth-tabs{display:flex;gap:8px;margin-bottom:16px;}
+.auth-tab{flex:1;padding:8px;border-radius:8px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all .15s;}
+.auth-tab.active{background:var(--gold);color:#000;}
+.auth-tab.inactive{background:transparent;border:1px solid var(--border);color:var(--muted);}
+
+/* Checkout addr card */
+.co-addr-card{background:var(--bg4);border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:8px;transition:border-color .2s;}
+.co-addr-card.sel{border-color:var(--gold);background:var(--gold-bg);}
+.co-addr-icon{width:34px;height:34px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;color:var(--muted);}
+.co-addr-card.sel .co-addr-icon{background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.3);color:var(--gold);}
+.co-radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--hint);margin-left:auto;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.co-addr-card.sel .co-radio{border-color:var(--gold);}
+.co-rdot{width:8px;height:8px;border-radius:50%;background:var(--gold);display:none;}
+.co-addr-card.sel .co-rdot{display:block;}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="logo">Shop<span>AI</span> ✨</div>
+    <div class="status-pill"><span class="dot"></span>Aria online</div>
+  </div>
+  <div class="hbtns">
+    <button class="icon-btn" onclick="openAddrManager()" title="Manage Addresses">
+      <span class="icon">location_on</span>
+    </button>
+    <button class="icon-btn" onclick="switchTab('cart')">
+      <span class="icon">shopping_cart</span>
+      <span class="badge" id="badge">0</span>
+    </button>
+    <button class="icon-btn" id="login-btn" onclick="openLogin()">
+      <span class="icon">account_circle</span>
+    </button>
+  </div>
+</header>
+
+<div class="app-body">
+  <div class="chat-wrap">
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <div class="input-box">
+        <input id="inp" type="text" placeholder="Ask Aria… buy, track, deliver to my home…" autocomplete="off"/>
+        <button class="send-btn" id="send-btn" onclick="send()"><span class="icon fill">send</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="panel-tabs">
+      <button class="tab-btn active" id="tab-cart" onclick="switchTab('cart')">🛒 Cart</button>
+      <button class="tab-btn" id="tab-wish" onclick="switchTab('wish')">♥ Wishlist</button>
+      <button class="tab-btn" id="tab-addr" onclick="switchTab('addr')">📍 Addresses</button>
+    </div>
+    <div class="panel-body" id="panel-cart">
+      <div class="panel-empty" id="cart-empty"><span class="icon" style="font-size:32px;">shopping_cart</span>Cart is empty</div>
+      <div id="cart-items"></div>
+    </div>
+    <div class="panel-body" id="panel-wish" style="display:none;">
+      <div class="panel-empty" id="wish-empty"><span class="icon" style="font-size:32px;">favorite</span>Wishlist empty</div>
+      <div id="wish-items"></div>
+    </div>
+    <div class="panel-body" id="panel-addr" style="display:none;">
+      <div class="panel-empty" id="addr-panel-empty" style="display:flex;"><span class="icon" style="font-size:32px;">location_on</span>No addresses saved</div>
+      <div id="addr-panel-items"></div>
+      <button onclick="openAddressForm()" style="width:100%;margin-top:8px;padding:10px;border-radius:10px;border:1px dashed rgba(245,166,35,.4);background:none;color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">+ Add New Address</button>
+    </div>
+    <div class="cart-footer" id="cart-footer" style="display:none;">
+      <div class="total-row"><span style="font-size:12px;color:var(--muted);font-weight:600;">Total</span><span class="total-val" id="total">$0.00</span></div>
+      <button class="checkout-btn" onclick="checkout()">Checkout →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     LOGIN / REGISTER MODAL
+════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="login-modal">
+  <div class="modal">
+    <div class="modal-title">Welcome 👋</div>
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab inactive" id="tab-register" onclick="switchAuthTab('register')">Register</button>
+    </div>
+    <div class="modal-sub" id="auth-sub">Sign in to shop, track orders and more</div>
+    <div id="login-fields">
+      <label class="form-label">Email</label>
+      <input class="form-input" id="lemail" type="email" placeholder="you@example.com" onkeydown="if(event.key==='Enter')doLogin()"/>
+      <label class="form-label">Password</label>
+      <input class="form-input" id="lpass" type="password" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <div id="register-fields" style="display:none;">
+      <div class="form-row">
+        <div><label class="form-label">First Name</label><input class="form-input" id="rfname" type="text" placeholder="John"/></div>
+        <div><label class="form-label">Last Name</label><input class="form-input" id="rlname" type="text" placeholder="Doe"/></div>
+      </div>
+      <label class="form-label">Email</label>
+      <input class="form-input" id="remail" type="email" placeholder="you@example.com"/>
+      <label class="form-label">Password</label>
+      <input class="form-input" id="rpass" type="password" placeholder="••••••••"/>
+    </div>
+    <div class="modal-err" id="lerr"></div>
+    <button class="modal-btn" id="lbtn" onclick="doLogin()">Sign In</button>
+    <div style="text-align:center;margin-top:12px;">
+      <button onclick="closeModal('login-modal')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     ADDRESS MANAGER MODAL
+════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="addr-manager-modal">
+  <div class="modal" style="max-width:640px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+      <div class="modal-title">My Addresses 📍</div>
+      <button onclick="closeModal('addr-manager-modal')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:22px;line-height:1;">×</button>
+    </div>
+    <div class="modal-sub" id="amgr-sub">Select a delivery address or add a new one</div>
+    <div class="addr-manager-wrap" id="amgr-cards">
+      <div style="color:var(--muted);font-size:13px;grid-column:1/-1;text-align:center;padding:20px 0;">Loading…</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <button class="modal-btn ghost" onclick="closeModal('addr-manager-modal')" style="flex:1;">Close</button>
+      <button class="modal-btn" onclick="closeModal('addr-manager-modal');openAddressForm()" style="flex:1;">+ Add New Address</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     ADD / EDIT ADDRESS FORM MODAL
+════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="addr-form-modal">
+  <div class="modal">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+      <button id="addr-back-btn" onclick="goAddrBack()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;padding:0;">←</button>
+      <div class="modal-title" id="addr-form-title">Add Address</div>
+    </div>
+    <div class="modal-sub" id="addr-form-sub">Step 1 of 2 — Choose a label for this address</div>
+    <div class="step-indicator">
+      <div class="step-dot active" id="sdot-1"></div>
+      <div class="step-dot" id="sdot-2"></div>
+    </div>
+
+    <!-- Step 1: Label picker -->
+    <div id="addr-step-1">
+      <label class="form-label">Preset Labels</label>
+      <div class="label-grid" id="label-grid">
+        <!-- populated by JS -->
+      </div>
+
+      <label class="form-label" style="margin-top:4px;">Or type your own label</label>
+      <div class="custom-label-row">
+        <input type="text" id="custom-label-input" placeholder="e.g. Parent's House, Hotel, Hostel…" maxlength="40"/>
+        <button onclick="applyCustomLabel()">Use</button>
+      </div>
+      <label class="form-label">Quick suggestions</label>
+      <div class="custom-chips" id="suggestion-chips"></div>
+
+      <button class="modal-btn" id="step1-next" onclick="goStep2()" style="margin-top:8px;">Next →</button>
+      <div class="modal-err" id="step1-err"></div>
+    </div>
+
+    <!-- Step 2: Address details -->
+    <div id="addr-step-2" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;background:var(--bg4);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:16px;">
+        <span class="icon" id="form-label-icon" style="color:var(--gold);">location_on</span>
+        <span id="form-label-display" style="font-size:13px;font-weight:700;color:var(--gold);"></span>
+        <button onclick="goStep1Back()" style="margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;font-weight:600;">Change</button>
+      </div>
+
+      <div class="form-row">
+        <div><label class="form-label">Street / Road</label><input class="form-input" id="addr-street" type="text" placeholder="123 MG Road"/></div>
+        <div><label class="form-label">House / Flat No.</label><input class="form-input" id="addr-house" type="text" placeholder="Flat 4B"/></div>
+      </div>
+      <label class="form-label">Landmark / Floor (optional)</label>
+      <input class="form-input" id="addr-apt" type="text" placeholder="Near St. Mary's Church, Floor 2"/>
+      <div class="form-row">
+        <div><label class="form-label">City</label><input class="form-input" id="addr-city" type="text" placeholder="Kochi"/></div>
+        <div><label class="form-label">ZIP / Postal Code</label><input class="form-input" id="addr-zip" type="text" placeholder="682001"/></div>
+      </div>
+      <div class="form-row">
+        <div><label class="form-label">State</label><input class="form-input" id="addr-state" type="text" placeholder="Kerala"/></div>
+        <div>
+          <label class="form-label">Country</label>
+          <select class="form-select" id="addr-country">
+            <option value="IN">India</option>
+            <option value="US">United States</option>
+            <option value="GB">United Kingdom</option>
+            <option value="AE">UAE</option>
+            <option value="SG">Singapore</option>
+            <option value="AU">Australia</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <input type="checkbox" id="addr-is-default" style="accent-color:var(--gold);width:16px;height:16px;cursor:pointer;"/>
+        <label for="addr-is-default" style="font-size:13px;color:var(--muted);cursor:pointer;">Set as default address</label>
+      </div>
+      <div class="modal-err" id="addr-err"></div>
+      <div class="modal-success" id="addr-success"></div>
+      <button class="modal-btn" id="addr-save-btn" onclick="saveAddress()">
+        <span class="icon fill" style="font-size:16px;vertical-align:-3px;">save</span> Save Address
+      </button>
+      <div style="text-align:center;margin-top:12px;">
+        <button onclick="closeModal('addr-form-modal')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     CHECKOUT MODAL
+════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="co-modal">
+  <div class="modal">
+    <div class="modal-title">Confirm Order 🛍️</div>
+    <div class="modal-sub" id="co-summary"></div>
+    <div id="co-addrs" style="margin:14px 0;"></div>
+    <button class="modal-btn" id="co-btn" onclick="confirmCheckout()">Place Order</button>
+    <div style="text-align:center;margin-top:10px;">
+      <button onclick="closeModal('co-modal')" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"><span id="t-icon" class="icon ok">check_circle</span><span id="t-msg">Done!</span></div>
+
+<script>
+const API = `http://${location.hostname}:8002`;
+let sid = "s_" + Math.random().toString(36).slice(2);
+let loggedIn = false, custId = null;
+let cart = [], wishlist = [], savedAddrs = [];
+let selAddr = null;
+let editingLabel = null;   // when editing existing address
+let selectedLabel = "";    // current label in form
+
+// ── Label definitions ──
+const PRESET_LABELS = [
+  {label:"home",           icon:"home",            display:"Home"},
+  {label:"work location",  icon:"business",        display:"Work"},
+  {label:"family address", icon:"family_restroom", display:"Family"},
+  {label:"temporary stay", icon:"hotel",           display:"Temp Stay"},
+  {label:"pickup location",icon:"store",           display:"Pickup"},
+  {label:"vacation address",icon:"beach_access",   display:"Vacation"},
+  {label:"guest address",  icon:"person",          display:"Guest"},
+  {label:"saved location", icon:"bookmark",        display:"Saved"},
+];
+const CUSTOM_SUGGESTIONS = [
+  "Parent's House","Hostel","Apartment","Hotel","Friend's Place",
+  "College","Branch Office","Warehouse","Holiday Stay","Studio","Gym"
+];
+const ICON_MAP = {};
+PRESET_LABELS.forEach(p => ICON_MAP[p.label] = p.icon);
+
+function getIcon(label){
+  return ICON_MAP[label.toLowerCase().trim()] || "location_on";
+}
+
+window.onload = () => { buildLabelGrid(); buildSuggestionChips(); welcome(); };
+
+function welcome() {
+  addAria("Hi! 👋 I'm <b>Aria</b>, your AI shopping assistant.<br>I can <b>find products</b>, <b>add to cart</b>, <b>track orders</b>, manage <b>addresses</b>, and <b>checkout</b> for you!");
+  const chips = ['Show me deals 🔥','My orders 📦','Track my order 🔍','My addresses 📍','My wishlist ❤️','Show jackets','Show shoes'];
+  const row = document.createElement('div'); row.className='chips';
+  chips.forEach(c => {
+    const b = document.createElement('button'); b.className='chip'; b.textContent=c;
+    b.onclick = () => { document.getElementById('inp').value=c; send(); };
+    row.appendChild(b);
+  });
+  document.getElementById('messages').appendChild(row);
+  loadFeatured();
+}
+
+async function loadFeatured() {
+  try {
+    const r = await fetch(`${API}/products`);
+    const d = await r.json();
+    const prods = Array.isArray(d) ? d : d.products || [];
+    if (prods.length) { addAria('✨ <b>Featured products:</b>'); addProds(prods); }
+  } catch(e) {}
+}
+
+async function send() {
+  const inp = document.getElementById('inp');
+  const txt = inp.value.trim(); if (!txt) return;
+  inp.value = ''; addUser(txt);
+  const t = addTyping();
+  document.getElementById('send-btn').disabled = true;
+  try {
+    const r = await fetch(`${API}/rag-chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({query:txt, session_id:sid})
+    });
+    const d = await r.json(); t.remove();
+    if (d.requires_login) {
+      addAria(d.answer || "Please login first.");
+      setTimeout(openLogin, 400);
+    } else {
+      const html = markdownToHtml(d.answer || d.response || d.ai_response || "How can I help?");
+      addAria(html);
+      if ((d.products || d.products_found || []).length) addProds(d.products || d.products_found);
+      if (d.cart) syncCart(d.cart, d.cart_total);
+      if (d.wishlist) syncWish(d.wishlist);
+      // Smart: if backend says address needed, open form
+      if (d.requires_address) {
+        setTimeout(() => openAddressForm(d.suggested_label || ""), 600);
+      }
+      if (d.open_address_manager) {
+        setTimeout(openAddrManager, 600);
+      }
+    }
+  } catch(e) {
+    t.remove();
+    addAria("⚠️ Cannot reach backend at <b>" + API + "</b>. Make sure uvicorn is running!");
+  }
+  document.getElementById('send-btn').disabled = false;
+  scrollBot();
+}
+
+document.getElementById('inp').onkeydown = e => { if (e.key === 'Enter') send(); };
+
+// simple bold/newline markdown
+function markdownToHtml(txt) {
+  return String(txt || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')
+    .replace(/\*(.*?)\*/g,'<i>$1</i>')
+    .replace(/\n/g,'<br>');
+}
+
+function scrollBot() { const m = document.getElementById('messages'); m.scrollTop = m.scrollHeight; }
+function addUser(txt) {
+  const r = document.createElement('div'); r.className='msg-row user';
+  r.innerHTML = `<div class="bubble user">${esc(txt)}</div><div class="avatar user"><span class="icon">person</span></div>`;
+  document.getElementById('messages').appendChild(r); scrollBot();
+}
+function addAria(html) {
+  const r = document.createElement('div'); r.className='msg-row';
+  r.innerHTML = `<div class="avatar aria">A</div><div class="bubble aria">${html}</div>`;
+  document.getElementById('messages').appendChild(r); scrollBot(); return r;
+}
+function addTyping() {
+  const r = document.createElement('div'); r.className='msg-row';
+  r.innerHTML = `<div class="avatar aria">A</div><div class="bubble aria"><div class="typing-dots"><span></span><span></span><span></span></div></div>`;
+  document.getElementById('messages').appendChild(r); scrollBot(); return r;
+}
+function addProds(prods) {
+  const row = document.createElement('div'); row.className='product-row';
+  prods.forEach(p => row.appendChild(mkCard(p)));
+  document.getElementById('messages').appendChild(row); scrollBot();
+}
+function mkCard(p) {
+  const d = document.createElement('div'); d.className='pcard';
+  const inW = wishlist.some(w => w.sku === p.sku);
+  const imgHtml = p.image ? `<img src="${p.image}" style="width:100%;height:100%;object-fit:cover;"/>` : `<span class="icon" style="font-size:36px;">inventory_2</span>`;
+  d.innerHTML = `<div class="pimg">${imgHtml}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pprice">$${parseFloat(p.price).toFixed(2)}</div><div class="pbtns"><button class="btn-add" onclick="addCart('${p.sku}','${ea(p.name)}',${p.price})"><span class="icon" style="font-size:14px;">add_shopping_cart</span>Add</button><button class="btn-wish ${inW?'active':''}" onclick="toggleWish('${p.sku}','${ea(p.name)}',${p.price},this)"><span class="icon fill" style="font-size:14px;">favorite</span></button></div></div>`;
+  return d;
+}
+// ── Cart ──
+function addCart(sku, name, price) {
+  if (!loggedIn) { toast("Please login to add items to cart","err"); setTimeout(openLogin,600); return; }
+  const ex = cart.find(i=>i.sku===sku);
+  if (ex) ex.qty++; else cart.push({sku,name,price:parseFloat(price),qty:1});
+  renderCart(); toast(`Added to cart! 🛒`,'ok');
+  fetch(`${API}/cart/add`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,sku,qty:1})}).catch(()=>{});
+}
+function syncCart(sc, total) { cart=sc; renderCart(); }
+function renderCart() {
+  const items=document.getElementById('cart-items'), empty=document.getElementById('cart-empty'), footer=document.getElementById('cart-footer');
+  const count=cart.reduce((s,i)=>s+i.qty,0), total=cart.reduce((s,i)=>s+i.price*i.qty,0);
+  document.getElementById('badge').textContent=count;
+  if (!cart.length){empty.style.display='flex';items.innerHTML='';footer.style.display='none';return;}
+  empty.style.display='none'; footer.style.display='block';
+  document.getElementById('total').textContent='$'+total.toFixed(2);
+  items.innerHTML=cart.map(i=>`<div class="cart-item">
+    <div style="flex:1;min-width:0;"><div class="cname">${esc(i.name)}</div><div class="cprice">$${(i.price*i.qty).toFixed(2)}</div>
+    <div class="qty-ctrl"><button class="qty-btn" onclick="chQty('${i.sku}',-1)">−</button><span style="font-size:13px;font-weight:700;min-width:16px;text-align:center;">${i.qty}</span><button class="qty-btn" onclick="chQty('${i.sku}',1)">+</button></div></div>
+    <button class="rm-btn" onclick="rmCart('${i.sku}')"><span class="icon" style="font-size:16px;">close</span></button>
+  </div>`).join('');
+}
+function chQty(sku,d){const i=cart.find(x=>x.sku===sku);if(!i)return;i.qty=Math.max(0,i.qty+d);if(i.qty===0)cart=cart.filter(x=>x.sku!==sku);renderCart();}
+function rmCart(sku){cart=cart.filter(i=>i.sku!==sku);renderCart();fetch(`${API}/cart/remove`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,sku})}).catch(()=>{});}
+
+// ── Wishlist ──
+function toggleWish(sku,name,price,btn){
+  const idx=wishlist.findIndex(w=>w.sku===sku);
+  if(idx>=0){wishlist.splice(idx,1);btn.classList.remove('active');toast('Removed from wishlist','ok');}
+  else{wishlist.push({sku,name,price:parseFloat(price)});btn.classList.add('active');toast('Added to wishlist ❤️','ok');}
+  renderWish();
+}
+function syncWish(d){wishlist=d;renderWish();}
+function renderWish(){
+  const items=document.getElementById('wish-items'),empty=document.getElementById('wish-empty');
+  if(!wishlist.length){empty.style.display='flex';items.innerHTML='';return;}
+  empty.style.display='none';
+  items.innerHTML=wishlist.map(i=>`<div class="cart-item">
+    <div style="flex:1;min-width:0;"><div class="cname">${esc(i.name)}</div><div class="cprice">$${parseFloat(i.price).toFixed(2)}</div>
+    <button onclick="moveToCart('${i.sku}')" style="margin-top:4px;padding:3px 8px;border-radius:6px;border:none;background:rgba(245,166,35,.15);color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;">→ Cart</button></div>
+    <button class="rm-btn" onclick="rmWish('${i.sku}')"><span class="icon" style="font-size:16px;">close</span></button>
+  </div>`).join('');
+}
+function moveToCart(sku){const i=wishlist.find(x=>x.sku===sku);if(i){addCart(i.sku,i.name,i.price);wishlist=wishlist.filter(x=>x.sku!==sku);renderWish();}}
+function rmWish(sku){wishlist=wishlist.filter(i=>i.sku!==sku);renderWish();}
+
+// ── Tabs ──
+function switchTab(t) {
+  ['cart','wish','addr'].forEach(x => {
+    document.getElementById('panel-'+x).style.display = t===x ? 'block' : 'none';
+    document.getElementById('tab-'+x).classList.toggle('active', t===x);
+  });
+  if (t==='addr' && loggedIn) loadAddrPanel();
+}
+
+// ── Auth ──
+function openLogin(){document.getElementById('login-modal').classList.remove('hidden');setTimeout(()=>document.getElementById('lemail').focus(),100);}
+function closeModal(id){document.getElementById(id).classList.add('hidden');}
+
+function switchAuthTab(tab){
+  const isLogin=tab==='login';
+  document.getElementById('tab-login').className='auth-tab '+(isLogin?'active':'inactive');
+  document.getElementById('tab-register').className='auth-tab '+(isLogin?'inactive':'active');
+  document.getElementById('login-fields').style.display=isLogin?'block':'none';
+  document.getElementById('register-fields').style.display=isLogin?'none':'block';
+  document.getElementById('auth-sub').textContent=isLogin?'Sign in to shop, track orders and more':'Create your account to get started';
+  document.getElementById('lbtn').textContent=isLogin?'Sign In':'Create Account';
+  document.getElementById('lbtn').onclick=isLogin?doLogin:doRegister;
+  document.getElementById('lerr').textContent='';
+}
+
+async function doLogin(){
+  const email=document.getElementById('lemail').value.trim(),pass=document.getElementById('lpass').value;
+  const err=document.getElementById('lerr'),btn=document.getElementById('lbtn');
+  if(!email||!pass){err.textContent='Enter email and password';return;}
+  btn.disabled=true;btn.textContent='Signing in…';err.textContent='';
+  try{
+    const r=await fetch(`${API}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,session_id:sid})});
+    const d=await r.json();
+    if(!r.ok||d.error||d.detail){err.textContent=typeof d.detail==='object'?JSON.stringify(d.detail):d.detail||d.error||d.message||'Login failed';}
+    else{
+      loggedIn=true;custId=d.customer_id||d.id||1;
+      if(d.session_id)sid=d.session_id;
+      const name=d.firstname||email.split('@')[0];
+      closeModal('login-modal');toast(`Welcome, ${name}! 👋`,'ok');
+      addAria(`You're logged in as <b>${name}</b>! What would you like to shop for today?`);
+      loadSavedAddrs();
+    }
+  }catch(e){err.textContent='Cannot reach server. Is backend running?';}
+  btn.disabled=false;btn.textContent='Sign In';
+}
+
+async function doRegister(){
+  const fname=document.getElementById('rfname').value.trim(),lname=document.getElementById('rlname').value.trim();
+  const email=document.getElementById('remail').value.trim(),pass=document.getElementById('rpass').value;
+  const err=document.getElementById('lerr'),btn=document.getElementById('lbtn');
+  if(!fname||!lname||!email||!pass){err.textContent='Please fill all fields';return;}
+  btn.disabled=true;btn.textContent='Creating account…';err.textContent='';
+  try{
+    const r=await fetch(`${API}/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({firstname:fname,lastname:lname,email,password:pass,session_id:sid})});
+    const d=await r.json();
+    if(!r.ok||d.detail){err.textContent=typeof d.detail==='object'?JSON.stringify(d.detail):d.detail||'Registration failed';}
+    else{
+      loggedIn=true;custId=d.customer_id||d.id;
+      if(d.session_id)sid=d.session_id;
+      closeModal('login-modal');toast(`Welcome, ${fname}! 🎉`,'ok');
+      addAria(`Account created! You're logged in as <b>${fname}</b>. Click 📍 to add a delivery address!`);
+    }
+  }catch(e){err.textContent='Cannot reach server.';}
+  btn.disabled=false;btn.textContent='Create Account';
+}
+
+// ════════════════════════════════════
+//  ADDRESS SYSTEM
+// ════════════════════════════════════
+
+async function loadSavedAddrs(){
+  if(!custId) return;
+  try{
+    const r=await fetch(`${API}/addresses/${custId}`);
+    if(r.ok) savedAddrs=await r.json();
+    else savedAddrs=[];
+  }catch(e){savedAddrs=[];}
+  renderAddrPanel();
+}
+
+function loadAddrPanel(){loadSavedAddrs();}
+
+function renderAddrPanel(){
+  const wrap=document.getElementById('addr-panel-items'),empty=document.getElementById('addr-panel-empty');
+  if(!savedAddrs.length){empty.style.display='flex';wrap.innerHTML='';return;}
+  empty.style.display='none';
+  wrap.innerHTML=savedAddrs.map(a=>`
+    <div class="cart-item" style="flex-direction:column;align-items:flex-start;gap:6px;">
+      <div style="display:flex;align-items:center;gap:8px;width:100%;">
+        <span class="icon" style="color:var(--gold);font-size:18px;">${getIcon(a.label)}</span>
+        <span style="font-size:13px;font-weight:700;">${esc(a.display_label||a.label)}</span>
+        ${a.is_default?'<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:99px;background:rgba(245,166,35,.15);color:var(--gold);margin-left:auto;">DEFAULT</span>':''}
+        <div style="display:flex;gap:4px;margin-left:auto;">
+          <button class="apc-btn" onclick="editAddress('${ea(a.label)}')">Edit</button>
+          <button class="apc-btn del" onclick="deleteAddr('${ea(a.label)}')">Delete</button>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--muted);padding-left:26px;">${esc(a.full_address)}</div>
+    </div>
+  `).join('');
+}
+
+// ── Address Manager Modal ──
+async function openAddrManager(){
+  if(!loggedIn){toast('Please login first','err');setTimeout(openLogin,600);return;}
+  document.getElementById('addr-manager-modal').classList.remove('hidden');
+  await loadSavedAddrs();
+  renderAddrManagerCards();
+}
+
+function renderAddrManagerCards(){
+  const wrap=document.getElementById('amgr-cards');
+  let html='';
+  savedAddrs.forEach(a=>{
+    html+=`<div class="addr-profile-card ${selAddr===a.id?'selected':''}" onclick="selectAddrCard(${a.id},this)">
+      <div class="apc-top">
+        <div class="apc-icon-wrap"><span class="icon apc-icon">${getIcon(a.label)}</span></div>
+        <span class="apc-label">${esc(a.display_label||a.label)}</span>
+        ${a.is_default?'<span class="apc-default-badge">Default</span>':''}
+      </div>
+      <div class="apc-addr">${esc(a.full_address)}</div>
+      <div class="apc-btns">
+        <button class="apc-btn" onclick="event.stopPropagation();editAddress('${ea(a.label)}')">Edit</button>
+        <button class="apc-btn del" onclick="event.stopPropagation();deleteAddr('${ea(a.label)}')">Delete</button>
+        ${!a.is_default?`<button class="apc-btn set-default" onclick="event.stopPropagation();setDefault(${a.id},'${ea(a.label)}')">Set Default</button>`:''}
+      </div>
+      <div class="apc-selected-ring"><div class="apc-check"></div></div>
+    </div>`;
+  });
+  // Add new card
+  html+=`<div class="addr-profile-card add-new" onclick="closeModal('addr-manager-modal');openAddressForm()">
+    <span class="icon" style="font-size:28px;color:var(--muted);">add_location_alt</span>
+    <span style="font-size:12px;font-weight:600;color:var(--muted);">Add New Address</span>
+  </div>`;
+  wrap.innerHTML=html;
+}
+
+function selectAddrCard(id,el){
+  selAddr=id;
+  document.querySelectorAll('#amgr-cards .addr-profile-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+async function setDefault(id,label){
+  if(!custId)return;
+  try{
+    await fetch(`${API}/addresses/${custId}/${encodeURIComponent(label)}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({is_default:true})
+    });
+    toast('Default address updated','ok');
+    await loadSavedAddrs();
+    renderAddrManagerCards();
+  }catch(e){toast('Could not update','err');}
+}
+
+async function deleteAddr(label){
+  if(!custId)return;
+  if(!confirm(`Delete "${label}" address?`))return;
+  try{
+    const r=await fetch(`${API}/addresses/${custId}/${encodeURIComponent(label)}`,{method:'DELETE'});
+    if(r.ok){
+      toast(`Deleted "${label}" address`,'ok');
+      await loadSavedAddrs();
+      renderAddrManagerCards();
+      renderAddrPanel();
+    }else toast('Could not delete','err');
+  }catch(e){toast('Could not delete','err');}
+}
+
+// ── Label Grid Builder ──
+function buildLabelGrid(){
+  const grid=document.getElementById('label-grid');
+  grid.innerHTML=PRESET_LABELS.map(p=>`
+    <div class="label-card" id="lc-${p.label.replace(/\s/g,'_')}" onclick="selectPresetLabel('${p.label}','${p.icon}','${p.display}',this)">
+      <span class="icon lc-icon">${p.icon}</span>
+      <span class="lc-text">${p.display}</span>
+    </div>`).join('');
+}
+
+function buildSuggestionChips(){
+  const wrap=document.getElementById('suggestion-chips');
+  wrap.innerHTML=CUSTOM_SUGGESTIONS.map(s=>`
+    <div class="custom-chip" onclick="applyChipLabel('${ea(s)}')">${esc(s)}</div>`).join('');
+}
+
+function selectPresetLabel(label,icon,display,el){
+  selectedLabel=label;
+  document.querySelectorAll('.label-card').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('custom-label-input').value='';
+  document.getElementById('step1-err').textContent='';
+}
+
+function applyCustomLabel(){
+  const val=document.getElementById('custom-label-input').value.trim();
+  if(!val)return;
+  selectedLabel=val.toLowerCase();
+  document.querySelectorAll('.label-card').forEach(c=>c.classList.remove('active'));
+  document.getElementById('step1-err').textContent='';
+  toast(`Label set: "${val}"`,'ok');
+}
+
+function applyChipLabel(label){
+  selectedLabel=label.toLowerCase();
+  document.querySelectorAll('.label-card').forEach(c=>c.classList.remove('active'));
+  document.getElementById('custom-label-input').value=label;
+  document.getElementById('step1-err').textContent='';
+}
+
+// ── Open form (add or pre-fill label) ──
+function openAddressForm(prefillLabel=''){
+  if(!loggedIn){toast('Please login first','err');setTimeout(openLogin,600);return;}
+  editingLabel=null;
+  selectedLabel=prefillLabel||'';
+  document.getElementById('addr-form-title').textContent='Add Address';
+  document.getElementById('addr-back-btn').style.display='none';
+  resetAddrForm();
+  if(prefillLabel){
+    // Auto-select the label
+    document.getElementById('custom-label-input').value=prefillLabel;
+    selectedLabel=prefillLabel.toLowerCase();
+    // Jump to step 2 directly if label provided
+    document.getElementById('addr-step-1').style.display='none';
+    document.getElementById('addr-step-2').style.display='block';
+    document.getElementById('addr-form-sub').textContent='Step 2 of 2 — Enter address details';
+    setStepDots(2);
+    document.getElementById('form-label-display').textContent=prefillLabel;
+    document.getElementById('form-label-icon').textContent=getIcon(prefillLabel.toLowerCase());
+  }else{
+    showStep(1);
+  }
+  document.getElementById('addr-form-modal').classList.remove('hidden');
+}
+
+async function editAddress(label){
+  if(!custId)return;
+  editingLabel=label;
+  selectedLabel=label;
+  // Fetch existing address
+  try{
+    const r=await fetch(`${API}/addresses/${custId}/${encodeURIComponent(label)}`);
+    const a=await r.json();
+    // Pre-fill step 2
+    document.getElementById('addr-form-title').textContent='Edit Address';
+    document.getElementById('addr-back-btn').style.display='flex';
+    // Parse full_address or use fields
+    document.getElementById('addr-street').value=a.street||'';
+    document.getElementById('addr-city').value=a.city||'';
+    document.getElementById('addr-zip').value=a.postal_code||'';
+    document.getElementById('addr-state').value=a.state||'';
+    document.getElementById('addr-country').value=a.country||'IN';
+    document.getElementById('addr-is-default').checked=a.is_default||false;
+    // Show label chip
+    document.getElementById('form-label-display').textContent=a.display_label||label;
+    document.getElementById('form-label-icon').textContent=getIcon(label);
+    showStep(2);
+    document.getElementById('addr-form-modal').classList.remove('hidden');
+  }catch(e){toast('Could not load address','err');}
+}
+
+function showStep(n){
+  document.getElementById('addr-step-1').style.display=n===1?'block':'none';
+  document.getElementById('addr-step-2').style.display=n===2?'block':'none';
+  document.getElementById('addr-form-sub').textContent=n===1?'Step 1 of 2 — Choose a label':'Step 2 of 2 — Enter address details';
+  setStepDots(n);
+}
+function setStepDots(n){
+  document.getElementById('sdot-1').className='step-dot '+(n===1?'active':n>1?'done':'');
+  document.getElementById('sdot-2').className='step-dot '+(n===2?'active':'');
+}
+function goStep2(){
+  if(!selectedLabel){document.getElementById('step1-err').textContent='Please choose or type a label';return;}
+  document.getElementById('form-label-display').textContent=selectedLabel.replace(/\b\w/g,c=>c.toUpperCase());
+  document.getElementById('form-label-icon').textContent=getIcon(selectedLabel);
+  showStep(2);
+}
+function goStep1Back(){showStep(1);}
+function goAddrBack(){
+  if(document.getElementById('addr-step-2').style.display==='block'){showStep(1);}
+  else{closeModal('addr-form-modal');}
+}
+
+function resetAddrForm(){
+  ['addr-street','addr-house','addr-apt','addr-city','addr-zip','addr-state'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('addr-country').selectedIndex=0;
+  document.getElementById('addr-is-default').checked=false;
+  document.getElementById('addr-err').textContent='';
+  document.getElementById('addr-success').textContent='';
+  document.querySelectorAll('.label-card').forEach(c=>c.classList.remove('active'));
+  document.getElementById('custom-label-input').value='';
+  selectedLabel='';
+  showStep(1);
+}
+
+async function saveAddress(){
+  const street=document.getElementById('addr-street').value.trim();
+  const city=document.getElementById('addr-city').value.trim();
+  const zip=document.getElementById('addr-zip').value.trim();
+  const state=document.getElementById('addr-state').value.trim();
+  const err=document.getElementById('addr-err');
+  const suc=document.getElementById('addr-success');
+  const btn=document.getElementById('addr-save-btn');
+
+  if(!street||!city||!zip||!state){err.textContent='Please fill Street, City, ZIP and State.';return;}
+  if(!selectedLabel){err.textContent='Please go back and choose a label.';return;}
+
+  const house=document.getElementById('addr-house').value.trim();
+  const apt=document.getElementById('addr-apt').value.trim();
+  const country=document.getElementById('addr-country').value;
+  const isDefault=document.getElementById('addr-is-default').checked;
+  const fullStreet=[street,house,apt].filter(Boolean).join(', ');
+  const fullAddr=[fullStreet,city,state,zip,country].filter(Boolean).join(', ');
+
+  btn.disabled=true; btn.textContent='Saving…'; err.textContent=''; suc.textContent='';
+  try{
+    const r=await fetch(`${API}/addresses/upsert`,{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        customer_id:custId,
+        label:selectedLabel,
+        full_address:fullAddr,
+        street:fullStreet,
+        city,state,
+        postal_code:zip,
+        country,
+        is_default:isDefault
+      })
+    });
+    const d=await r.json();
+    if(!r.ok||d.error||d.detail){
+      err.textContent=typeof d.detail==='object'?JSON.stringify(d.detail):d.detail||d.error||'Could not save address';
+    }else{
+      suc.textContent='✓ Address saved!';
+      toast(`${selectedLabel.replace(/\b\w/g,c=>c.toUpperCase())} address saved! 📍`,'ok');
+      const displayLabel=selectedLabel.replace(/\b\w/g,c=>c.toUpperCase());
+      addAria(`Your <b>${displayLabel}</b> address has been saved: ${fullAddr}.<br>You can now say <b>"deliver to my ${displayLabel}"</b> to use it!`);
+      await loadSavedAddrs();
+      setTimeout(()=>closeModal('addr-form-modal'), 800);
+    }
+  }catch(e){err.textContent='Cannot reach server.';}
+  btn.disabled=false;
+  btn.innerHTML='<span class="icon fill" style="font-size:16px;vertical-align:-3px;">save</span> Save Address';
+}
+
+// ── Checkout ──
+async function checkout(){
+  if(!loggedIn){openLogin();return;}
+  if(!cart.length){toast('Cart is empty','err');return;}
+  const total=cart.reduce((s,i)=>s+i.price*i.qty,0);
+  document.getElementById('co-summary').innerHTML=`<b>${cart.length} item(s)</b> · Total: <b style="color:var(--gold)">$${total.toFixed(2)}</b><br><br>Select delivery address:`;
+  document.getElementById('co-addrs').innerHTML='<div style="color:var(--muted);font-size:13px;">Loading addresses…</div>';
+  document.getElementById('co-modal').classList.remove('hidden');
+  await loadSavedAddrs();
+  if(!savedAddrs.length){
+    document.getElementById('co-addrs').innerHTML=`<div style="color:var(--muted);font-size:13px;">No addresses found. <a href="#" onclick="closeModal('co-modal');openAddressForm();" style="color:var(--gold);">Add one now →</a></div>`;
+    return;
+  }
+  selAddr=savedAddrs.find(a=>a.is_default)?.id||savedAddrs[0].id;
+  document.getElementById('co-addrs').innerHTML=savedAddrs.map(a=>`
+    <div class="co-addr-card ${a.id===selAddr?'sel':''}" onclick="selCoAddress(${a.id},this)">
+      <div class="co-addr-icon"><span class="icon">${getIcon(a.label)}</span></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:700;">${esc(a.display_label||a.label)}</div>
+        <div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(a.full_address)}</div>
+      </div>
+      <div class="co-radio"><div class="co-rdot"></div></div>
+    </div>`).join('');
+}
+
+function selCoAddress(id,el){
+  selAddr=id;
+  document.querySelectorAll('#co-addrs .co-addr-card').forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+async function confirmCheckout(){
+  const btn=document.getElementById('co-btn');
+  btn.disabled=true; btn.textContent='Placing order…';
+  try{
+    const addr=savedAddrs.find(a=>a.id===selAddr)||savedAddrs[0];
+    const r=await fetch(`${API}/checkout`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,customer_id:custId,address_id:selAddr,cart,shipping_address:addr})});
+    const d=await r.json();
+    closeModal('co-modal'); cart=[]; renderCart(); toast('Order placed! 🎉','ok');
+    addAria(`🎉 Order placed! ${d.order_id?'Order ID: <b>'+d.order_id+'</b>':''}<br>Delivering to: <b>${addr.display_label||addr.label}</b> — ${addr.full_address}<br>Ask me anytime to track it!`);
+  }catch(e){toast('Checkout failed. Try via chat.','err');}
+  btn.disabled=false; btn.textContent='Place Order';
+}
+
+// ── Toast ──
+function toast(msg,type='ok'){
+  const t=document.getElementById('toast'),icon=document.getElementById('t-icon'),m=document.getElementById('t-msg');
+  icon.className='icon '+(type==='ok'?'ok':'err');
+  icon.textContent=type==='ok'?'check_circle':'error';
+  m.textContent=msg;
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2800);
+}
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function ea(s){return String(s||'').replace(/'/g,"\\'").replace(/"/g,'\\"');}
+
+// Close on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.add('hidden');}));
+</script>
+<script src="/static/voice_client.js"></script>
+</body>
+</html>
