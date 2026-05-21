@@ -1,2 +1,10 @@
 __pycache__/
 *.pyc
+<<<<<<< HEAD
+=======
+*.pyo
+.env
+*.log
+node_modules/
+.DS_Store
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1

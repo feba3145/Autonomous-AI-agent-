@@ -32,18 +32,30 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 .badge{position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:99px;background:var(--gold);color:#000;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
 
 /* ── Layout ── */
+<<<<<<< HEAD
 .app-body{display:flex;flex:1;overflow:hidden;} 
+=======
+.app-body{display:flex;flex:1;overflow:auto;} 
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
 .chat-wrap{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;} 
 
 /* ── Messages ── */
 .messages{flex:1;overflow-y:scroll;padding:20px 16px;display:flex;flex-direction:column;gap:14px;scroll-behavior:smooth;}
 .messages::-webkit-scrollbar{width:4px;}.messages::-webkit-scrollbar-thumb{background:var(--hint);border-radius:99px;}
+<<<<<<< HEAD
 .msg-row{display:flex;gap:10px;align-items:flex-start;animation:msgIn .22s ease;}
+=======
+.msg-row{display:flex;gap:10px;align-items:flex-start;overflow:visible;animation:msgIn .22s ease;}
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
 @keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .msg-row.user{flex-direction:row-reverse;}
 .avatar{width:32px;height:32px;border-radius:99px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;}
 .avatar.aria{background:var(--gold);color:#000;}.avatar.user{background:var(--bg4);color:var(--text);}
+<<<<<<< HEAD
 .bubble{max-width:76%;padding:12px 16px;border-radius:18px;font-size:14px;line-height:1.65;}
+=======
+.bubble{max-width:76%;overflow:visible;padding:12px 16px;border-radius:18px;font-size:14px;line-height:1.65;}
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
 .bubble.aria{background:var(--bg3);border:1px solid var(--border);border-radius:18px 18px 18px 4px;}
 .bubble.user{background:var(--gold);color:#000;font-weight:500;border-radius:18px 18px 4px 18px;}
 .bubble b{font-weight:700;}
@@ -53,11 +65,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
 
 /* ── Products ── */
+<<<<<<< HEAD
 .product-row{display:flex;gap:10px;overflow-x:auto;padding:4px 0 12px 0;}
 .product-row::-webkit-scrollbar{height:3px;}.product-row::-webkit-scrollbar-thumb{background:var(--hint);border-radius:99px;}
 .pcard{min-width:150px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-shrink:0;transition:border-color .2s,transform .2s;}
 .pcard:hover{border-color:rgba(245,166,35,.4);transform:translateY(-2px);}
 .pimg{width:100%;height:200px;background:var(--bg4);overflow:visible;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:32px;}
+=======
+.product-row{display:flex;gap:10px;overflow-x:auto;padding:4px 0 12px 0;align-items:flex-start;min-height:310px;}
+.product-row::-webkit-scrollbar{height:3px;}.product-row::-webkit-scrollbar-thumb{background:var(--hint);border-radius:99px;}
+.pcard{width:180px;min-width:180px;min-height:300px;background:var(--bg3);border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-shrink:0;transition:border-color .2s,transform .2s;}
+.pcard:hover{border-color:rgba(245,166,35,.4);transform:translateY(-2px);}
+.pimg{width:100%;height:200px;min-height:200px;background:var(--bg4);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:32px;}
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
 .pinfo{padding:10px;}
 .pname{font-size:12px;font-weight:600;line-height:1.3;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;} 
 .pprice{font-size:14px;font-weight:700;color:var(--gold);}
@@ -419,7 +439,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 <div class="toast" id="toast"><span id="t-icon" class="icon ok">check_circle</span><span id="t-msg">Done!</span></div>
 
 <script>
+<<<<<<< HEAD
 const API = `https://${location.hostname}:8002`;
+=======
+const API = `http://${location.hostname}:8002`;
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
 let sid = "s_" + Math.random().toString(36).slice(2);
 let loggedIn = false, custId = null;
 let cart = [], wishlist = [], savedAddrs = [];
@@ -545,7 +569,11 @@ function addProds(prods) {
 function mkCard(p) {
   const d = document.createElement('div'); d.className='pcard';
   const inW = wishlist.some(w => w.sku === p.sku);
+<<<<<<< HEAD
   const imgHtml = p.image ? `<img src="${p.image}" style="width:100%;height:100%;object-fit:cover;"/>` : `<span class="icon" style="font-size:36px;">inventory_2</span>`;
+=======
+  const imgHtml = p.image ? `<img src="${p.image && p.image.startsWith("http") ? p.image : API + p.image}" style="width:100%;height:100%;object-fit:cover;"/>` : `<span class="icon" style="font-size:36px;">inventory_2</span>`;
+>>>>>>> d964331054a31ed4e3db2f0db8b5e11c4e4f47c1
   d.innerHTML = `<div class="pimg">${imgHtml}</div><div class="pinfo"><div class="pname">${esc(p.name)}</div><div class="pprice">$${parseFloat(p.price).toFixed(2)}</div><div class="pbtns"><button class="btn-add" onclick="addCart('${p.sku}','${ea(p.name)}',${p.price})"><span class="icon" style="font-size:14px;">add_shopping_cart</span>Add</button><button class="btn-wish ${inW?'active':''}" onclick="toggleWish('${p.sku}','${ea(p.name)}',${p.price},this)"><span class="icon fill" style="font-size:14px;">favorite</span></button></div></div>`;
   return d;
 }
