@@ -232,14 +232,38 @@ def rag_chat(payload: ChatRequest):
         from mcp_client import mcp
         order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
         if not order_id:
-            return {"answer": "Please provide your order number.", "products": [], "session_id": session_id}
+            # Auto-fetch latest order
+            if not session_store[session_id].get("logged_in"):
+                return {"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True}
+            email = session_store[session_id].get("email")
+            if email:
+                orders = mcp.get_customer_orders(email)
+                items = orders.get("items", [])
+                if items:
+                    order_id = items[0].get("increment_id")
+                    session_store[session_id]["last_order_id"] = order_id
+            if not order_id:
+                return {"answer": "Please provide your order number. Example: track order 000000001", "products": [], "session_id": session_id}
         session_store[session_id]["last_order_id"] = order_id
         result = mcp.get_tracking_info(order_id)
         tracks = result.get("tracks", [])
         if not tracks:
             return {"answer": "Order " + order_id + " is being processed. No shipment yet.", "products": [], "session_id": session_id}
         t = tracks[0]
-        return {"answer": "Order " + order_id + " status: " + str(result.get("order_status")) + ". Carrier: " + str(t.get("carrier_title")) + ". Tracking: " + str(t.get("tracking_number")), "products": [], "session_id": session_id}
+        status = result.get("order_status","processing")
+        status_map = {"pending":"🕐 Order Received","processing":"⚙️ Processing","complete":"✅ Delivered","shipped":"🚚 Shipped","canceled":"❌ Cancelled"}
+        status_label = status_map.get(status.lower(), f"📦 {status.title()}")
+        t = tracks[0] if tracks else {}
+        carrier = t.get("carrier_title","")
+        tracking_no = t.get("tracking_number","")
+        ship_date = t.get("shipment_date","")[:10] if t.get("shipment_date") else ""
+        answer = f"📦 Order **{order_id}**\n\nStatus: {status_label}\n"
+        if carrier: answer += f"Carrier: {carrier}\n"
+        if tracking_no: answer += f"Tracking No: **{tracking_no}**\n"
+        if ship_date: answer += f"Shipped on: {ship_date}\n"
+        answer += "\nSay **cancel order** or **return order** if needed."
+        return {"answer": answer, "products": [], "session_id": session_id}
+
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
     is_cancel_early = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
     is_coupon = any(kw in query.lower() for kw in COUPON_KEYWORDS)
@@ -604,13 +628,17 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
     if is_tracking:
         order_id = session_store[session_id].get("last_order_id")
         if not order_id:
-            return {
-                "answer": "Please provide your order number so I can track it for you. For example: 'track order 000000001'",
-                "products": [],
-                "session_id": session_id
-            }
-        from mcp_client import mcp
-        result = mcp.get_tracking_info(order_id)
+            if not session_store[session_id].get("logged_in"):
+                return {"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True}
+            email = session_store[session_id].get("email")
+            if email:
+                from mcp_client import mcp as _mcp
+                from mcp_client import mcp as _mcp
+                orders = _mcp.get_customer_orders(email)
+                items = orders.get("items",[])
+                if items: order_id = items[0].get("increment_id")
+            if not order_id:
+                return {"answer": "No orders found for your account.", "products": [], "session_id": session_id}
         if result.get("error") or not result:
             return {
                 "answer": f"I couldn't find tracking info for order {order_id}. Please check your order number.",
