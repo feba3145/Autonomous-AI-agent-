@@ -4,7 +4,7 @@ from typing import Optional
 
 import session_manager as sm
 
-BASE = "http://127.0.0.1:8002"
+BASE = "https://localhost:8002"
 
 
 def _clean_for_tts(text: str) -> str:
@@ -18,7 +18,7 @@ def _clean_for_tts(text: str) -> str:
 
 
 async def _call_rag(query: str, session_id: str, customer_id: Optional[int]) -> dict:
-    async with httpx.AsyncClient(timeout=20) as client:
+    async with httpx.AsyncClient(timeout=60, verify=False) as client:
         resp = await client.post(f"{BASE}/rag-chat", json={
             "query": query,
             "session_id": session_id,
@@ -29,7 +29,7 @@ async def _call_rag(query: str, session_id: str, customer_id: Optional[int]) -> 
 
 
 async def _do_checkout(session_id: str, customer_id: int) -> dict:
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=30, verify=False) as client:
         resp = await client.post(f"{BASE}/checkout", json={
             "session_id": session_id,
             "customer_id": customer_id,

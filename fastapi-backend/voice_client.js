@@ -1,5 +1,5 @@
 (function () {
-  const WS_BASE = `ws://${location.hostname}:8002/ws/voice`;
+  const WS_BASE = `wss://${location.hostname}:8002/ws/voice`;
 
   // ── Inject mic button ──────────────────────────────────────────────────────
   const inputBox = document.querySelector(".input-box");
@@ -100,7 +100,7 @@
         break;
 
       case "audio_url":
-        playAudio(`http://${location.hostname}:8002${msg.url}`);
+        playAudio(`https://${location.hostname}:8002${msg.url}`);
         setMicState("idle");
         break;
 

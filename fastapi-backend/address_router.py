@@ -329,7 +329,7 @@ def resolve_address(body: ResolveRequest):
             WHERE customer_id = %s
               AND label ILIKE %s
             LIMIT 1
-        """, (body.customer_id, f"%{body.query.lower()}%"))
+        """, (body.customer_id, f"%{body.query.lower().replace('deliver to my ','').replace('deliver to ','').replace(' address','').replace('office','work').replace('shop','work').strip()}%"))
         raw = cur.fetchone()
         row = raw + (None,) if raw else None  # pad to same width
 

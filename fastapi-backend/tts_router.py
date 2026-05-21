@@ -1,29 +1,30 @@
+import httpx
 import io
-
-import edge_tts
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/tts", tags=["tts"])
 
-DEFAULT_VOICE = "en-US-AriaNeural"
-
+DEEPGRAM_API_KEY = "8c43f7782d8e9ab96fa4a41fe0bd0a601eae8e9e"
+DEFAULT_VOICE = "aura-asteria-en"
 
 class TTSRequest(BaseModel):
     text: str
     voice: str = DEFAULT_VOICE
 
-
 async def _synth(text: str, voice: str) -> bytes:
-    communicate = edge_tts.Communicate(text=text, voice=voice)
-    buf = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            buf.write(chunk["data"])
-    buf.seek(0)
-    return buf.read()
-
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            "https://api.deepgram.com/v1/speak?model=aura-asteria-en",
+            headers={
+                "Authorization": f"Token {DEEPGRAM_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={"text": text}
+        )
+        resp.raise_for_status()
+        return resp.content
 
 @router.get("/speak")
 async def speak_get(
@@ -37,7 +38,6 @@ async def speak_get(
         headers={"Cache-Control": "no-cache"}
     )
 
-
 @router.post("/speak")
 async def speak_post(req: TTSRequest):
     audio = await _synth(req.text, req.voice)
@@ -47,9 +47,11 @@ async def speak_post(req: TTSRequest):
         headers={"Cache-Control": "no-cache"}
     )
 
-
 @router.get("/voices")
 async def list_voices():
-    voices = await edge_tts.list_voices()
-    english = [v for v in voices if v["Locale"].startswith("en-")]
-    return {"voices": english}
+    return {"voices": [
+        {"ShortName": "aura-asteria-en", "FriendlyName": "Asteria (Female)"},
+        {"ShortName": "aura-luna-en",    "FriendlyName": "Luna (Female)"},
+        {"ShortName": "aura-zeus-en",    "FriendlyName": "Zeus (Male)"},
+        {"ShortName": "aura-orion-en",   "FriendlyName": "Orion (Male)"},
+    ]}

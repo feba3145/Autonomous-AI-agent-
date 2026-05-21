@@ -419,7 +419,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:0 2
 <div class="toast" id="toast"><span id="t-icon" class="icon ok">check_circle</span><span id="t-msg">Done!</span></div>
 
 <script>
-const API = `http://${location.hostname}:8002`;
+const API = `https://${location.hostname}:8002`;
 let sid = "s_" + Math.random().toString(36).slice(2);
 let loggedIn = false, custId = null;
 let cart = [], wishlist = [], savedAddrs = [];

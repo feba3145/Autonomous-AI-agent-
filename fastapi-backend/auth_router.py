@@ -105,9 +105,10 @@ def sync_guest_cart_to_magento(session_id: str, customer_token: str, cart_store:
         except Exception as e:
             errors.append({"sku": item["sku"], "error": str(e)})
 
-    # Clear local guest cart after sync
+    # Keep local cart intact but reset qty to avoid duplicates
     if synced > 0:
-        cart_store[session_id] = []
+        for item in cart_store.get(session_id, []):
+            item["qty"] = max(1, item["qty"] - synced)
 
     return {"synced": synced, "errors": errors}
 
@@ -146,7 +147,12 @@ def login(body: LoginRequest):
             "last_products": [],
             "wishlist_pending": False
         }
+    # Preserve guest cart on login
+    guest_cart = cart_store.get(body.session_id, [])
 
+    # Restore guest cart after login
+    if guest_cart and not cart_store.get(body.session_id):
+        cart_store[body.session_id] = guest_cart
     session_store[body.session_id]["logged_in"] = True
     session_store[body.session_id]["customer_id"] = customer_id
     session_store[body.session_id]["customer_token"] = token

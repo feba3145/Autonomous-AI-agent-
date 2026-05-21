@@ -10,7 +10,11 @@ import time
 import threading
 from pgvector.psycopg2 import register_vector
 from sentence_transformers import SentenceTransformer
-from langchain_ollama import OllamaLLM
+from openai import OpenAI
+import groq as groq_lib
+import os
+DEEPSEEK = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+GROQ = groq_lib.Groq(api_key=os.getenv("GROQ_API_KEY"))
 from dotenv import load_dotenv
 from address_router import router as address_router
 from auth_router import router as auth_router
@@ -22,7 +26,7 @@ from shipment_router import router as shipment_router
 from admin_shipment_router import router as admin_shipment_router
 from webrtc_router import router as webrtc_router
 from stt_router    import router as stt_router
-#from tts_router    import router as tts_router
+from tts_router    import router as tts_router
 import urllib3
 urllib3.disable_warnings()
 load_dotenv()
@@ -46,7 +50,7 @@ app.include_router(shipment_router, prefix="/shipment", tags=["Shipment"])
 app.include_router(admin_shipment_router, tags=["Admin Shipment"])
 app.include_router(webrtc_router)
 app.include_router(stt_router)
-#app.include_router(tts_router)
+app.include_router(tts_router)
 model = SentenceTransformer("all-MiniLM-L6-v2")
 session_store = {}
 SESSION_TIMEOUT = 1800
@@ -73,8 +77,8 @@ class CartRemove(BaseModel):
     sku: str
 
 # ─── KEYWORDS ───
-BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "i want this", "get this"]
-DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to", "use my"]
+BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "i want this", "get this", "add the", "add it", "add this", "put this", "put it"]
+DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to my", "use my address"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
 POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
@@ -116,6 +120,15 @@ def cleanup_sessions():
 threading.Thread(target=cleanup_sessions, daemon=True).start()
 
 # ─── DB ───
+
+def llm_chat(prompt):
+    try:
+        r = DEEPSEEK.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}])
+        return r.choices[0].message.content
+    except Exception:
+        r = GROQ.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}])
+        return r.choices[0].message.content
+
 def get_db():
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
@@ -135,6 +148,16 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/coupons")
+def get_coupons():
+    conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
+    cur = conn.cursor()
+    cur.execute("SELECT code, description, discount_type, discount_amount, min_order_amount FROM coupons WHERE is_active=true ORDER BY discount_amount DESC")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"code": r[0], "description": r[1], "discount_type": r[2], "discount_amount": float(r[3]), "min_order_amount": float(r[4])} for r in rows]
 
 # ─── SEARCH ───
 @app.get("/search")
@@ -175,10 +198,8 @@ def chat(payload: ChatRequest):
     conn.close()
     products_text = "\n".join([f"- {r[1]} (SKU: {r[0]}, Price: ${r[2]})" for r in rows])
     prompt = f"You are a helpful shopping assistant. Based on these products:\n{products_text}\n\nAnswer this query: {query}"
-    res = requests.post(
-        "http://localhost:11434/api/generate",
-        json={"model": "llama3.2", "prompt": prompt, "stream": False}
-    )
+    _r_resp = llm_chat(prompt)
+    res = type("R", (), {"json": lambda self: {"response": _r_resp}})()
     return {
         "response": res.json().get("response", ""),
         "products": [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "image": r[3] if r[3] else None} for r in rows]
@@ -278,11 +299,8 @@ def rag_chat(payload: ChatRequest):
 
     # ── RAG search ──
     try:
-        interpret_res = requests.post(
-            "http://localhost:11434/api/generate",
-            json={"model": "llama3.2", "prompt": f"Extract the main product type from this query: '{query}'. Reply with ONLY the exact product words from the query, nothing else. No explanation.", "stream": False},
-            timeout=180
-        )
+        _ir_resp = llm_chat(f"What product is the user looking for? Query: '{query}'. Reply with ONLY the product category (e.g. bag, jacket, shoes, tshirt). One or two words max. No explanation.")
+        interpret_res = type("R", (), {"json": lambda self: {"response": _ir_resp}})()
         raw = interpret_res.json().get("response", query).strip()
         interpreted_query = " ".join(raw.split()[:3]).strip(".,") or query
         if len(interpreted_query) < 3: interpreted_query = query
@@ -318,8 +336,12 @@ def rag_chat(payload: ChatRequest):
     products = in_stock if in_stock else products
 
     # ✅ FIX: Save products to session EARLY so all intent checks below can use them
-    session_store[session_id]["last_products"] = products
-
+    is_ref_intent = any(kw in query.lower() for kw in ["first", "second", "third", "1st", "2nd", "3rd", "this one", "that one"])
+    existing_prods = session_store[session_id].get("last_products", [])
+    if is_ref_intent and existing_prods:
+        products = existing_prods  # use existing products, ignore RAG results
+    else:
+        session_store[session_id]["last_products"] = products
     # ── Delivery intent (smart — also handles add+deliver in one message) ──
     is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS)
@@ -363,6 +385,7 @@ def rag_chat(payload: ChatRequest):
                 "cart_total": round(total, 2),
                 "resolved_address": addr
             }
+            session_store[session_id]["resolved_address"] = addr
         except Exception as e:
             err = str(e)
             if "404" in err or "No saved address" in err or "matched" in err:
@@ -387,11 +410,8 @@ def rag_chat(payload: ChatRequest):
         intent_prompt = f"""Classify intent. Products: {product_list_text}. Message: "{query}"
 Reply JSON only: {{"intent":"add_to_cart","index":0}} or {{"intent":"search","index":-1}} or {{"intent":"other","index":-1}}
 index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants to buy/add/get/order/deliver."""
-        intent_res = requests.post(
-            "http://localhost:11434/api/generate",
-            json={"model": "llama3.2", "prompt": intent_prompt, "stream": False},
-            timeout=180
-        )
+        _int_resp = llm_chat(intent_prompt)
+        intent_res = type("R", (), {"json": lambda self: {"response": _int_resp}})()
         import json as _json, re as _re
         raw_intent = intent_res.json().get("response", "{}").strip()
         json_match = _re.search(r'\{.*\}', raw_intent, _re.DOTALL)
@@ -402,13 +422,88 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
 
     llm_intent = intent_data.get("intent", "other")
     llm_index = int(intent_data.get("index", 0))
+    import re as _re2
+    ordinal_match = _re2.search(r'\b(1st|first|2nd|second|3rd|third|4th|fourth|5th|fifth)\b', query.lower())
+    if ordinal_match:
+        ordinal_map = {"1st":0,"first":0,"2nd":1,"second":1,"3rd":2,"third":2,"4th":3,"fourth":3,"5th":4,"fifth":4}
+        llm_index = ordinal_map.get(ordinal_match.group(), 0)
+        if any(kw in query.lower() for kw in BUY_KEYWORDS + DELIVERY_KEYWORDS):
+            llm_intent = "add_to_cart"
 
     # ── Buy intent ──
-    is_buy_intent = llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)
+    if session_store[session_id].get("pending_checkout"):
+        q = query.lower().strip()
+        if any(w in q for w in ["skip","no","continue","later"]):
+            session_store[session_id]["pending_checkout"] = False
+            return {"answer": "Proceeding to checkout!", "products": [], "session_id": session_id, "open_checkout": True}
+        import re as _rec
+        code_match = _rec.search(r'\b[A-Z0-9]{4,15}\b', query.upper())
+        coupons = session_store[session_id].get("available_coupons", [])
+        if "first" in q:
+            chosen = coupons[0] if coupons else None
+        elif "second" in q:
+            chosen = coupons[1] if len(coupons)>1 else None
+        elif code_match:
+            code = code_match.group()
+            chosen = next((c for c in coupons if c["code"]==code), None)
+        elif any(w in q for w in ["yes","apply","use","ok"]):
+            chosen = coupons[0] if coupons else None
+        else:
+            chosen = None
+        if chosen:
+            cart = cart_store.get(session_id, [])
+            total = sum(i["price"]*i["qty"] for i in cart)
+            if chosen["discount_type"] == "percent":
+                discount = round(total * chosen["discount_amount"] / 100, 2)
+            else:
+                discount = min(chosen["discount_amount"], total)
+            final = round(total - discount, 2)
+            session_store[session_id]["coupon"] = chosen["code"]
+            session_store[session_id]["coupon_discount"] = discount
+            session_store[session_id]["pending_checkout"] = False
+            return {"answer": f"Coupon **{chosen['code']}** applied!\n\nSubtotal: ${total}\nDiscount: -${discount}\nFinal Total: **${final}**\n\nSay **yes** to place the order!", "products": [], "session_id": session_id}
+        else:
+            return {"answer": "Coupon not found. Say **skip** to continue or try another code.", "products": [], "session_id": session_id}
+
+    # ── Yes to place order ──
+    if query.lower().strip() in ["yes","yes!","yeah","yep","ok","okay","confirm","place it","do it"]:
+        resolved = session_store[session_id].get("resolved_address")
+        if not resolved:
+            return {"answer": "Opening checkout!", "products": [], "session_id": session_id, "open_checkout": True}
+        if resolved:
+            cart = cart_store.get(session_id, [])
+            if cart:
+                try:
+                    from checkout_router import place_order, CheckoutRequest
+                    email = session_store[session_id].get("email","")
+                    firstname = session_store[session_id].get("firstname","Customer")
+                    lastname = session_store[session_id].get("lastname","")
+                    req = CheckoutRequest(
+                        session_id=session_id,
+                        email=email,
+                        firstname=firstname,
+                        lastname=lastname,
+                        street=resolved.get("street", resolved.get("full_address","")),
+                        city=resolved.get("city","Kochi"),
+                        postcode=resolved.get("postal_code","682001"),
+                        telephone=session_store[session_id].get("telephone","9999999999"),
+                        region_code="KL",
+                        country_id="IN"
+                    )
+                    result = place_order(req)
+                    cart_store[session_id] = []
+                    session_store[session_id]["resolved_address"] = None
+                    return {"answer": f"Order placed! Delivering to **{resolved.get('display_label','Home')}**: {resolved.get('full_address','')}. Thank you for shopping with ShopAI!", "products": [], "session_id": session_id, "cart": [], "cart_total": 0}
+                except Exception as e:
+                    return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
+
+    is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
+    is_buy_intent = (llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)) and not is_checkout_only
+    is_delivery_also = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     if is_buy_intent:
-        if not session_store[session_id].get("logged_in", False):
+        if not session_store[session_id].get("logged_in", False) and is_delivery_also:
             return {
-                "answer": "Please login or register first to add items to your cart! 🔐",
+                "answer": "Please login to continue with delivery and order processing! 🔐",
                 "products": session_store[session_id].get("last_products", []),
                 "session_id": session_id,
                 "requires_login": True
@@ -701,6 +796,25 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
     # ── Auto Checkout intent ──
     is_checkout = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     is_deliver = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
+    if is_checkout and not is_deliver:
+        cart = cart_store.get(session_id, [])
+        if not cart:
+            return {"answer": "Your cart is empty! Please add products first.", "products": [], "session_id": session_id}
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT code, description, discount_type, discount_amount, min_order_amount FROM coupons WHERE is_active=true ORDER BY discount_amount DESC")
+        coupons = cur.fetchall()
+        cur.close()
+        conn.close()
+        total = sum(i["price"]*i["qty"] for i in cart)
+        if coupons:
+            coupon_list = "\n".join([f"{i+1}. **{c[0]}** — {c[1]}" for i,c in enumerate(coupons[:5])])
+            session_store[session_id]["pending_checkout"] = True
+            session_store[session_id]["available_coupons"] = [{"code":c[0],"description":c[1],"discount_type":c[2],"discount_amount":float(c[3]),"min_order":float(c[4])} for c in coupons]
+            return {"answer": f"Your cart total: **${round(total,2)}**\n\nAvailable offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to continue.", "products": [], "session_id": session_id}
+        else:
+            return {"answer": "No offers available.", "products": [], "session_id": session_id, "open_checkout": True}
+
     if is_checkout or is_deliver:
         if not session_store[session_id].get("logged_in", False):
             return {"answer": "Please login first so I can place your order! Click the login button or say your email.", "products": [], "session_id": session_id, "requires_login": True}
@@ -780,8 +894,7 @@ Previous Conversation:
 Customer: {query}
 Assistant:"""
 
-    llm = OllamaLLM(model="llama3.2", base_url="http://localhost:11434", timeout=300)
-    answer = llm.invoke(prompt)
+    answer = llm_chat(prompt)
 
     history.append({"role": "human", "content": query})
     history.append({"role": "assistant", "content": answer})
