@@ -343,6 +343,8 @@ def rag_chat(payload: ChatRequest):
     else:
         session_store[session_id]["last_products"] = products
     # ── Delivery intent (smart — also handles add+deliver in one message) ──
+    llm_index = 0
+    llm_intent = "other"
     is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS)
     if is_delivery_intent:
@@ -437,7 +439,8 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
             session_store[session_id]["pending_checkout"] = False
             return {"answer": "Proceeding to checkout!", "products": [], "session_id": session_id, "open_checkout": True}
         import re as _rec
-        code_match = _rec.search(r'\b[A-Z0-9]{4,15}\b', query.upper())
+        query_upper = query.upper().replace(' ', '')
+        code_match = _rec.search(r'\b[A-Z0-9]{4,15}\b', query.upper()) or _rec.search(r'[A-Z0-9]{4,15}', query_upper)
         coupons = session_store[session_id].get("available_coupons", [])
         if "first" in q:
             chosen = coupons[0] if coupons else None
