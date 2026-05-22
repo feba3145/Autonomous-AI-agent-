@@ -19,6 +19,12 @@ async def voice_ws(websocket: WebSocket, session_id: str, customer_id: int = 0):
     sess = await sm.get_or_create(session_id)
     if customer_id:
         await sm.update(session_id, customer_id=customer_id, logged_in=True)
+        # Sync with main session_store
+        from main import session_store, cart_store
+        if session_id not in session_store:
+            session_store[session_id] = {}
+        session_store[session_id]["customer_id"] = customer_id
+        session_store[session_id]["logged_in"] = True
     frames: list[bytes] = []
 
     async def send(obj: dict):

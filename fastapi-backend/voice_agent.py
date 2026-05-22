@@ -45,7 +45,7 @@ async def process_utterance(
     actions: list[str] = []
 
     if not transcript.strip():
-        return "Sorry, I did not catch that. Could you say that again?", []
+        return "Sorry, I did not catch that. Could you say that again?", [], []
 
     try:
         rag_result = await _call_rag(transcript, session_id, sess.customer_id)
