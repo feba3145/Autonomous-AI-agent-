@@ -77,7 +77,7 @@ class CartRemove(BaseModel):
     sku: str
 
 # ─── KEYWORDS ───
-BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "i want this", "get this", "add the", "add it", "add this", "put this", "put it"]
+BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "get this", "add the", "add it", "add this", "put this", "put it"]
 DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to my", "use my address", "deliver it to", "delivery to my", "send to my", "ship to my", "my home address", "my office address", "home address", "office address"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
@@ -152,6 +152,52 @@ def llm_chat(prompt):
     except Exception as e:
         print(f"[GROQ ERROR] {e}")
         return ""
+
+
+def extract_filters_llm(query, history_text=""):
+    """Use LLM to extract filters from query."""
+    try:
+        prompt = f"""Extract shopping filters from this query. Reply ONLY with JSON, nothing else.
+Query: "{query}"
+Previous context: "{history_text}"
+Reply format: {{"max_price": null or number, "min_price": null or number, "color": null or "colorname", "size": null or "size"}}
+Examples:
+"show black jackets under $60" -> {{"max_price": 60, "min_price": null, "color": "black", "size": null}}
+"affordable red tops" -> {{"max_price": 50, "min_price": null, "color": "red", "size": null}}
+"show me medium size hoodies" -> {{"max_price": null, "min_price": null, "color": null, "size": "medium"}}
+"cheap ones" -> {{"max_price": 30, "min_price": null, "color": null, "size": null}}
+JSON:"""
+        result = llm_chat(prompt)
+        import json, re
+        match = re.search(r'\{.*\}', result, re.DOTALL)
+        if match:
+            return json.loads(match.group())
+    except:
+        pass
+    return {"max_price": None, "min_price": None, "color": None, "size": None}
+
+
+def llm_rerank(query, products, history_text=""):
+    try:
+        prod_list = "\n".join([f"{i+1}. {p['name']} - ${p['price']}" for i,p in enumerate(products)])
+        prompt = f"""From this product list, select TOP 5 most relevant for the query.
+Consider color, size, price preferences.
+Query: "{query}"
+Context: "{history_text}"
+Products:
+{prod_list}
+Reply ONLY with JSON array of numbers like [3,1,5,2,4]
+JSON:"""
+        result = llm_chat(prompt)
+        import json, re
+        match = re.search(r'\[.*\]', result, re.DOTALL)
+        if match:
+            indices = json.loads(match.group())
+            reranked = [products[i-1] for i in indices if 1 <= i <= len(products)]
+            return reranked if reranked else products[:5]
+    except Exception as e:
+        print(f"[RERANK ERROR] {e}")
+    return products[:5]
 
 def get_db():
     conn = psycopg2.connect(
@@ -356,21 +402,49 @@ def rag_chat(payload: ChatRequest):
         interpreted_query = query
     print(f"[RAG] keywords: {interpreted_query}")
     embedding = model.encode(interpreted_query).tolist()
+    # Extract filters using LLM
+    history_text = " ".join([m["content"] for m in history[-4:]])
+    filters = extract_filters_llm(query, history_text)
+    # Build dynamic query
+    where_clauses = ["price > 0"]
+    params = []
+    if filters.get("max_price"): where_clauses.append("price <= %s"); params.append(filters["max_price"])
+    if filters.get("min_price"): where_clauses.append("price >= %s"); params.append(filters["min_price"])
+    color_filter = filters.get("color")
+    if color_filter: where_clauses.append("name ILIKE %s"); params.append(f'%{color_filter}%')
+    if filters.get("size"): where_clauses.append("name ILIKE %s"); params.append(f'%{filters["size"]}%')
+    where_sql = " AND ".join(where_clauses)
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(f"""
         SELECT sku, name, price, image,
                1 - (embedding <=> %s::vector) AS similarity
         FROM products
-        WHERE price > 0
+        WHERE {where_sql}
         ORDER BY embedding <=> %s::vector
-        LIMIT 5
-    """, (embedding, embedding))
+        LIMIT 15
+    """, [embedding] + params + [embedding])
     rows = cur.fetchall()
+    # Fallback: if no results with color filter, try without color
+    if not rows and color_filter:
+        cur.execute(f"""
+            SELECT sku, name, price, image,
+                   1 - (embedding <=> %s::vector) AS similarity
+            FROM products
+            WHERE price > 0
+            ORDER BY embedding <=> %s::vector
+            LIMIT 5
+        """, [embedding, embedding])
+        rows = cur.fetchall()
     cur.close()
     conn.close()
 
     products = [{"sku": r[0], "name": r[1], "price": float(r[2] or 0), "similarity": float(r[4]), "image": r[3] if r[3] else None} for r in rows]
+
+    # ── LLM Rerank ──
+    history_text = " ".join([m["content"] for m in history[-4:]])
+    saved_prods = session_store[session_id].get("last_products", [])
+    products = llm_rerank(query, products, history_text)
 
     # ── Check real-time stock via MCP ──
     in_stock = []
@@ -384,11 +458,8 @@ def rag_chat(payload: ChatRequest):
     products = in_stock if in_stock else products
 
     # ✅ FIX: Save products to session EARLY so all intent checks below can use them
-    is_ref_intent = any(kw in query.lower() for kw in ["first", "second", "third", "1st", "2nd", "3rd", "this one", "that one"])
     existing_prods = session_store[session_id].get("last_products", [])
-    if is_ref_intent and existing_prods:
-        products = existing_prods  # use existing products, ignore RAG results
-    else:
+    if not saved_prods:
         session_store[session_id]["last_products"] = products
     # ── Delivery intent (smart — also handles add+deliver in one message) ──
     llm_index = 0
@@ -459,7 +530,10 @@ def rag_chat(payload: ChatRequest):
         product_list_text = ", ".join([f"{i+1}. {p['name']}" for i, p in enumerate(last_products)]) if last_products else "none"
         intent_prompt = f"""Classify intent. Products: {product_list_text}. Message: "{query}"
 Reply JSON only: {{"intent":"add_to_cart","index":0}} or {{"intent":"search","index":-1}} or {{"intent":"other","index":-1}}
-index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants to buy/add/get/order/deliver."""
+index=0 for first, 1 for second, 2 for third product.
+add_to_cart if user says: add, buy, purchase, put in cart, order, get this, take this, i'll take, give me the.
+add_to_cart also if user refers to a specific product from the list by color/size like 'the medium one', 'the green one'.
+DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what about."""
         _int_resp = llm_chat(intent_prompt)
         intent_res = type("R", (), {"json": lambda self: {"response": _int_resp}})()
         import json as _json, re as _re
@@ -472,6 +546,10 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
 
     llm_intent = intent_data.get("intent", "other")
     llm_index = int(intent_data.get("index", 0))
+    # Restore existing products if user is adding to cart
+    existing_prods = session_store[session_id].get("last_products", [])
+    if existing_prods and llm_intent == "add_to_cart":
+        products = existing_prods
     import re as _re2
     ordinal_match = _re2.search(r'\b(1st|first|2nd|second|3rd|third|4th|fourth|5th|fifth)\b', query.lower())
     if ordinal_match:
@@ -594,14 +672,17 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
             last_products = products
             session_store[session_id]["last_products"] = products
 
-        # Try exact name match first
-        name_matched = None
+        # Try best name match - score each product by how many query words match
+        query_words = [w.lower() for w in query.split() if len(w)>3]
+        best_score = 0
+        best_match = None
         for p in last_products:
-            if any(w.lower() in p["name"].lower() for w in query.split() if len(w)>4):
-                name_matched = p
-                break
-        if name_matched:
-            top = name_matched
+            score = sum(1 for w in query_words if w in p["name"].lower())
+            if score > best_score:
+                best_score = score
+                best_match = p
+        if best_match and best_score >= 2:
+            top = best_match
         else:
             chosen_idx = max(0, min(llm_index, len(last_products) - 1))
             top = last_products[chosen_idx]
