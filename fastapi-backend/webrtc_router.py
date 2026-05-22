@@ -14,9 +14,11 @@ router = APIRouter(tags=["webrtc"])
 
 
 @router.websocket("/ws/voice/{session_id}")
-async def voice_ws(websocket: WebSocket, session_id: str):
+async def voice_ws(websocket: WebSocket, session_id: str, customer_id: int = 0):
     await websocket.accept()
-    await sm.get_or_create(session_id)
+    sess = await sm.get_or_create(session_id)
+    if customer_id:
+        await sm.update(session_id, customer_id=customer_id, logged_in=True)
     frames: list[bytes] = []
 
     async def send(obj: dict):
@@ -82,7 +84,7 @@ async def _handle_speech(speech_frames, session_id, send):
     await send({"type": "transcript", "text": transcript})
 
     try:
-        reply_text, actions = await voice_agent.process_utterance(
+        reply_text, actions, products = await voice_agent.process_utterance(
             transcript, session_id
         )
     except Exception as e:
@@ -90,6 +92,14 @@ async def _handle_speech(speech_frames, session_id, send):
         return
 
     await send({"type": "reply_text", "text": reply_text})
+    # Sync cart to frontend
+    from main import cart_store
+    sess = await sm.get_or_create(session_id)
+    if sess.cart:
+        cart_store[session_id] = sess.cart
+        await send({"type": "sync_cart", "cart": sess.cart, "total": sum(i.get("price",0)*i.get("qty",1) for i in sess.cart)})
+    if products:
+        await send({"type": "products", "data": products})
 
     encoded = urllib.parse.quote(reply_text[:500])
     await send({
@@ -98,4 +108,10 @@ async def _handle_speech(speech_frames, session_id, send):
     })
 
     for action in actions:
+        if action == "cart_updated":
+            from main import cart_store
+            cart_store[session_id] = [
+                {"sku": i.get("sku"), "name": i.get("name"), "price": i.get("price",0), "qty": i.get("qty",1)}
+                for i in (await sm.get_or_create(session_id)).cart or []
+            ]
         await send({"type": "action", "name": action, "data": {}})

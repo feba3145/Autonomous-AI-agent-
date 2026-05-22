@@ -78,7 +78,7 @@ class CartRemove(BaseModel):
 
 # ─── KEYWORDS ───
 BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "i want this", "get this", "add the", "add it", "add this", "put this", "put it"]
-DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to my", "use my address"]
+DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to my", "use my address", "deliver it to", "delivery to my", "send to my", "ship to my", "my home address", "my office address", "home address", "office address"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
 POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
@@ -121,13 +121,37 @@ threading.Thread(target=cleanup_sessions, daemon=True).start()
 
 # ─── DB ───
 
+def aria_say(situation, data=""):
+    """Make Aria respond naturally using LLM."""
+    try:
+        prompt = f"""You are Aria, a warm and friendly AI shopping assistant for ShopAI.
+Respond in 1-2 short friendly sentences. Be natural, helpful and positive.
+Situation: {situation}
+Data: {data}
+Aria:"""
+        return llm_chat(prompt)
+    except:
+        return data
+
+def aria_say(situation, data=""):
+    """Make Aria respond naturally using LLM."""
+    try:
+        prompt = f"""You are Aria, a warm and friendly AI shopping assistant for ShopAI.
+Respond in 1-2 short friendly sentences. Be natural, helpful and positive.
+Situation: {situation}
+Data: {data}
+Aria:"""
+        return llm_chat(prompt)
+    except:
+        return data
+
 def llm_chat(prompt):
     try:
-        r = DEEPSEEK.chat.completions.create(model="deepseek-chat", messages=[{"role":"user","content":prompt}])
-        return r.choices[0].message.content
-    except Exception:
         r = GROQ.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}])
         return r.choices[0].message.content
+    except Exception as e:
+        print(f"[GROQ ERROR] {e}")
+        return ""
 
 def get_db():
     conn = psycopg2.connect(
@@ -261,8 +285,8 @@ def rag_chat(payload: ChatRequest):
         if carrier: answer += f"Carrier: {carrier}\n"
         if tracking_no: answer += f"Tracking No: **{tracking_no}**\n"
         if ship_date: answer += f"Shipped on: {ship_date}\n"
-        answer += "\nSay **cancel order** or **return order** if needed."
-        return {"answer": answer, "products": [], "session_id": session_id}
+        natural = aria_say(f"Order {order_id} tracking info", answer)
+        return {"answer": natural, "products": [], "session_id": session_id}
 
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
     is_cancel_early = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
@@ -370,7 +394,7 @@ def rag_chat(payload: ChatRequest):
     llm_index = 0
     llm_intent = "other"
     is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
-    is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS)
+    is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS) and not any(kw in query.lower() for kw in ["home address", "office address", "my address", "deliver it"])
     if is_delivery_intent:
         cid = session_store[session_id].get("customer_id", 0)
         if not cid:
@@ -524,6 +548,26 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
                 except Exception as e:
                     return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
 
+    # ── Remove from cart by name ──
+    if any(kw in query.lower() for kw in ["remove", "delete from cart", "take out", "don't want"]):
+        cart = cart_store.get(session_id, [])
+        if not cart:
+            return {"answer": "Your cart is empty!", "products": [], "session_id": session_id}
+        removed = []
+        for item in cart[:]:
+            if any(w in item["name"].lower() for w in query.lower().split() if len(w)>3):
+                cart.remove(item)
+                removed.append(item["name"])
+        if removed:
+            cart_store[session_id] = cart
+            total = sum(i["price"]*i["qty"] for i in cart)
+            return {"answer": f"Removed {', '.join(removed)} from cart! New total: ${round(total,2)}", "products": [], "session_id": session_id, "cart": cart, "cart_total": round(total,2)}
+        else:
+            return {"answer": "I couldn't find that item in your cart.", "products": [], "session_id": session_id}
+
+    # ── Store categories intent ──
+    if any(kw in query.lower() for kw in ["categories", "what do you sell", "what categories", "what products", "store have", "available in"]):
+        return {"answer": "🛍️ Here are the categories available in our store:\n\n1. 👕 **Tops** — 560 products\n2. 👖 **Bottoms** — 472 products\n3. 🧥 **Jackets** — 266 products\n4. 💪 **Sports Wear** — 262 products\n5. 👚 **Hoodies** — 198 products\n6. 👜 **Bags** — 12 products\n7. 📦 **Others** — 270 products\n\nSay **show jackets**, **show bags** etc. to browse!", "products": [], "session_id": session_id}
     is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     is_buy_intent = (llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)) and not is_checkout_only
     is_delivery_also = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
@@ -550,8 +594,17 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
             last_products = products
             session_store[session_id]["last_products"] = products
 
-        chosen_idx = max(0, min(llm_index, len(last_products) - 1))
-        top = last_products[chosen_idx]
+        # Try exact name match first
+        name_matched = None
+        for p in last_products:
+            if any(w.lower() in p["name"].lower() for w in query.split() if len(w)>4):
+                name_matched = p
+                break
+        if name_matched:
+            top = name_matched
+        else:
+            chosen_idx = max(0, min(llm_index, len(last_products) - 1))
+            top = last_products[chosen_idx]
         if session_id not in cart_store:
             cart_store[session_id] = []
         existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
@@ -704,8 +757,9 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
             f"• Order {o['increment_id']} — {o['status']} — ${o['grand_total']}"
             for o in orders[:5]
         ])
+        natural = aria_say(f"Customer asked for order history. They have {len(orders)} orders.", f"Orders: {order_list}. Tell them their orders naturally and offer to track any of them.")
         return {
-            "answer": f"Here are your recent orders:\n\n{order_list}\n\nSay 'track order 000000001' to get tracking details.",
+            "answer": natural,
             "products": [],
             "session_id": session_id
         }
@@ -789,7 +843,7 @@ index=0 for first, 1 for second, 2 for third product. add_to_cart if user wants 
             cid = session_store[session_id].get("customer_id", 0)
             upsert_address(AddressUpsert(customer_id=cid, label=lines.get("label","home"), full_address=", ".join(filter(None,[lines.get("street"),lines.get("city"),lines.get("state"),lines.get("postal_code")])), street=lines.get("street"), city=lines.get("city"), state=lines.get("state"), postal_code=lines.get("postal_code")))
             session_store[session_id]["awaiting_address"] = False
-            return {"answer": "Address saved successfully!", "products": [], "session_id": session_id}
+            return {"answer": aria_say("Customer just saved a new address successfully", "Confirm address saved and tell them they can now use it for delivery"), "products": [], "session_id": session_id}
         except Exception as e:
             return {"answer": f"Could not save: {str(e)}", "products": [], "session_id": session_id}
     is_delete_address = any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS)

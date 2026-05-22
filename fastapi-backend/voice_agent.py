@@ -98,4 +98,5 @@ async def process_utterance(
     hist.append({"role": "assistant", "content": reply})
     await sm.update(session_id, conversation_history=hist)
 
-    return reply, actions
+    products = rag_result.get("products") or rag_result.get("products_found") or []
+    return reply, actions, products
