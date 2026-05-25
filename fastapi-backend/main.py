@@ -290,7 +290,7 @@ def rag_chat(payload: ChatRequest):
             "wishlist_pending": False
         }
     session_store[session_id]["last_used"] = time.time()
-    history = session_store[session_id]["history"]
+    history = session_store[session_id].get("history", [])
     
   
   # ── Early tracking check — must come before buy intent ──
@@ -990,9 +990,9 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
         cid = session_store[session_id].get("customer_id", 1)
         # Detect address preference
         addr_label = "home"
-        if "office" in query.lower():
-            addr_label = "office"
-        elif "home" in query.lower():
+        if any(w in query.lower() for w in ["office", "work", "workplace", "letter"]):
+            addr_label = "work"
+        elif any(w in query.lower() for w in ["home", "house", "residence"]):
             addr_label = "home"
         # Fetch saved addresses
         try:
