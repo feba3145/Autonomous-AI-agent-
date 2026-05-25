@@ -81,7 +81,7 @@ BUY_KEYWORDS = ["buy", "purchase", "add to cart", "i want to buy", "get this", "
 DELIVERY_KEYWORDS = ["deliver to", "send to", "ship to", "delivery to", "deliver at", "send it to my", "use my address", "deliver it to", "delivery to my", "send to my", "ship to my", "my home address", "my office address", "home address", "office address"]
 WISHLIST_KEYWORDS = ["wishlist", "save for later", "favourite", "favorite", "add to wishlist"]
 ADD_ADDRESS_KEYWORDS = ["add address", "save address", "new address", "add my address", "save my address"]
-POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about", "exchange", "delivery days", "how long"]
+POLICY_KEYWORDS = ["shipping", "warranty", "privacy", "policy", "faq", "about us", "exchange", "delivery days", "how long", "return policy"]
 TRACKING_KEYWORDS = ["where is my order", "track my order", "order status", "tracking", "shipment status", "where is my package", "track order"]
 ORDER_HISTORY_KEYWORDS = ["my orders", "show my orders", "order history", "past orders", "previous orders", "what did i order"]
 DELETE_ADDRESS_KEYWORDS = ["delete address", "remove address", "forget my address", "delete my"]
@@ -507,6 +507,23 @@ def rag_chat(payload: ChatRequest):
                 "resolved_address": addr
             }
             session_store[session_id]["resolved_address"] = addr
+            # Show coupons before confirming
+            try:
+                conn2 = get_db()
+                cur2 = conn2.cursor()
+                cur2.execute("SELECT code, description, discount_type, discount_amount, min_order_amount FROM coupons WHERE is_active=true ORDER BY discount_amount DESC LIMIT 3")
+                coupons2 = cur2.fetchall()
+                cur2.close()
+                conn2.close()
+                if coupons2:
+                    session_store[session_id]["pending_checkout"] = True
+                    session_store[session_id]["available_coupons"] = [{"code":c[0],"description":c[1],"discount_type":c[2],"discount_amount":float(c[3]),"min_order":float(c[4])} for c in coupons2]
+                    coupon_list = "\n".join([f"{i+1}. **{c[0]}** — {c[1]}" for i,c in enumerate(coupons2)])
+                    cart = cart_store.get(session_id, [])
+                    total = sum(i["price"]*i["qty"] for i in cart)
+                    return {"answer": f"I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**\n\n🎟️ Available offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to place order!", "products": [], "session_id": session_id, "cart": cart, "cart_total": round(total,2)}
+            except:
+                pass
         except Exception as e:
             err = str(e)
             if "404" in err or "No saved address" in err or "matched" in err:
@@ -626,6 +643,30 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                 except Exception as e:
                     return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
 
+    # ── Product description intent ──
+    _desc_intent = llm_chat(f"""Does this message ask for product description/details? Reply ONLY yes or no.
+Message: "{query}"
+Answer:""").strip().lower().startswith("yes")
+    if _desc_intent:
+        last_products = session_store[session_id].get("last_products", [])
+        if last_products:
+            # Find best matching product
+            query_words = [w.lower() for w in query.split() if len(w)>3]
+            # Score by matching words, prefer longer matches
+            def score(p):
+                name = p["name"].lower()
+                return sum(len(w) for w in query_words if w in name)
+            best = max(last_products, key=score, default=last_products[0])
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("SELECT description FROM products WHERE sku = %s", (best["sku"],))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            import re
+            desc = re.sub('<[^<]+?>', ' ', row[0] or '').strip() if row and row[0] else "No description available."
+            session_store[session_id]["last_products"] = [best]
+            return {"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id}
     # ── Remove from cart by name ──
     if any(kw in query.lower() for kw in ["remove", "delete from cart", "take out", "don't want"]):
         cart = cart_store.get(session_id, [])
@@ -1092,6 +1133,20 @@ def product_count():
     cur.close()
     conn.close()
     return {"count": count}
+
+@app.get("/product/detail/{sku}")
+def get_product_detail(sku: str):
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT sku, name, price, image, description FROM products WHERE sku = %s", (sku,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+    if not row:
+        return {"error": "Product not found"}
+    import re
+    desc = re.sub('<[^<]+?>', ' ', row[4] or '').strip() if row[4] else "No description available."
+    return {"sku": row[0], "name": row[1], "price": float(row[2]), "image": row[3], "description": desc}
 
 @app.get("/product/sku/{sku}")
 def get_product_by_sku(sku: str):
