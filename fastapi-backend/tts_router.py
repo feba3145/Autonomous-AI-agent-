@@ -7,7 +7,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/tts", tags=["tts"])
 
 DEEPGRAM_API_KEY = "8c43f7782d8e9ab96fa4a41fe0bd0a601eae8e9e"
-DEFAULT_VOICE = "aura-asteria-en"
+DEFAULT_VOICE = "aura-hera-en"
 
 class TTSRequest(BaseModel):
     text: str
@@ -16,7 +16,7 @@ class TTSRequest(BaseModel):
 async def _synth(text: str, voice: str) -> bytes:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            "https://api.deepgram.com/v1/speak?model=aura-asteria-en",
+            "https://api.deepgram.com/v1/speak?model=aura-hera-en",
             headers={
                 "Authorization": f"Token {DEEPGRAM_API_KEY}",
                 "Content-Type": "application/json"
@@ -50,8 +50,8 @@ async def speak_post(req: TTSRequest):
 @router.get("/voices")
 async def list_voices():
     return {"voices": [
-        {"ShortName": "aura-asteria-en", "FriendlyName": "Asteria (Female)"},
-        {"ShortName": "aura-luna-en",    "FriendlyName": "Luna (Female)"},
+        {"ShortName": "aura-hera-en", "FriendlyName": "Asteria (Female)"},
+        {"ShortName": "aura-hera-en",    "FriendlyName": "Luna (Female)"},
         {"ShortName": "aura-zeus-en",    "FriendlyName": "Zeus (Male)"},
         {"ShortName": "aura-orion-en",   "FriendlyName": "Orion (Male)"},
     ]}

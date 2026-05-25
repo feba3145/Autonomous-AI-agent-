@@ -110,7 +110,7 @@ async def _handle_speech(speech_frames, session_id, send):
     encoded = urllib.parse.quote(reply_text[:500])
     await send({
         "type": "audio_url",
-        "url": f"/tts/speak?text={encoded}&voice=aura-asteria-en"
+        "url": f"/tts/speak?text={encoded}&voice=aura-hera-en"
     })
 
     for action in actions:
