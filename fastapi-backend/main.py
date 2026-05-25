@@ -548,9 +548,8 @@ def rag_chat(payload: ChatRequest):
         intent_prompt = f"""Classify intent. Products: {product_list_text}. Message: "{query}"
 Reply JSON only: {{"intent":"add_to_cart","index":0}} or {{"intent":"search","index":-1}} or {{"intent":"other","index":-1}}
 index=0 for first, 1 for second, 2 for third product.
-add_to_cart if user says: add, buy, purchase, put in cart, order, get this, take this, i'll take, give me the.
-add_to_cart also if user refers to a specific product from the list by color/size like 'the medium one', 'the green one'.
-DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what about."""
+add_to_cart ONLY if user explicitly says: add, buy, purchase, put in cart, order this, take this, i'll take, give me the [specific product].
+DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what about, i need, give me options, what size."""
         _int_resp = llm_chat(intent_prompt)
         intent_res = type("R", (), {"json": lambda self: {"response": _int_resp}})()
         import json as _json, re as _re
@@ -643,6 +642,16 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                 except Exception as e:
                     return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
 
+    # ── Size filter on existing products ──
+    sizes = ["xs","s-","s ","small","-m-","m-","m ","medium","-l-","l-","l ","large","xl","xxl","2xl"]
+    if any(sz in query.lower() for sz in sizes) and session_store[session_id].get("last_products"):
+        existing = session_store[session_id]["last_products"]
+        size_word = next((sz.strip("-").strip() for sz in sizes if sz in query.lower()), None)
+        if size_word:
+            filtered = [p for p in existing if size_word.upper() in p["name"].upper() or f"-{size_word.upper()}-" in p["name"].upper()]
+            if filtered:
+                session_store[session_id]["last_products"] = filtered
+                return {"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id}
     # ── Product description intent ──
     _desc_intent = llm_chat(f"""Does this message ask for product description/details? Reply ONLY yes or no.
 Message: "{query}"

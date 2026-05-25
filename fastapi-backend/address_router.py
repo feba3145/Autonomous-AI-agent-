@@ -313,8 +313,8 @@ def resolve_address(body: ResolveRequest):
         """, (query_vec, body.customer_id, query_vec))
         row = cur.fetchone()
 
-        # If best match distance > 0.6, also try ILIKE fallback
-        if row and row[8] > 0.6:
+        # If best match distance > 0.3, also try ILIKE fallback
+        if row and row[8] > 0.3:
             row = None
 
     else:
