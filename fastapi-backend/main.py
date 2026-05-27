@@ -291,6 +291,7 @@ def rag_chat(payload: ChatRequest):
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id].get("history", [])
+    print(f"[RAG_START] query={query}")
     
   
   # ── Early tracking check — must come before buy intent ──
@@ -574,6 +575,30 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
         if any(kw in query.lower() for kw in BUY_KEYWORDS + DELIVERY_KEYWORDS):
             llm_intent = "add_to_cart"
 
+    print(f"[DESC_PRE] reached desc check for: {query}")
+    # ── Product description intent (before buy intent) ──
+    _ql = query.lower()
+    _desc_intent = any(p in _ql for p in ["tell me about","tellme about","describe","what is the","details of","more info","product info","about the","info about","features of","specs of"])
+    if _desc_intent:
+        print(f"[DESC] triggered for: {query}")
+        last_prods = session_store[session_id].get("last_products", [])
+        query_words = [w.lower() for w in query.split() if len(w)>3]
+        def _score(p): return sum(len(w) for w in query_words if w in p["name"].lower())
+        best = max(last_prods, key=_score) if last_prods else None
+        if not best or _score(best) == 0:
+            conn0 = get_db(); cur0 = conn0.cursor()
+            cur0.execute("SELECT sku,name,price,image FROM products WHERE name ILIKE %s LIMIT 1",(f"%{' '.join(query_words)}%",))
+            r0 = cur0.fetchone(); cur0.close(); conn0.close()
+            if r0: best = {"sku":r0[0],"name":r0[1],"price":float(r0[2]),"image":r0[3]}
+        if best:
+            conn=get_db(); cur=conn.cursor()
+            cur.execute("SELECT description FROM products WHERE sku=%s",(best["sku"],))
+            row=cur.fetchone(); cur.close(); conn.close()
+            import re as _re3
+            desc = _re3.sub('<[^<]+?>',' ',row[0] or '').strip() if row and row[0] else "No description available."
+            session_store[session_id]["last_products"] = [best]
+            return {"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id}
+    is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     # ── Buy intent ──
     if session_store[session_id].get("pending_checkout"):
         q = query.lower().strip()
@@ -611,7 +636,8 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
             return {"answer": "Coupon not found. Say **skip** to continue or try another code.", "products": [], "session_id": session_id}
 
     # ── Yes to place order ──
-    if query.lower().strip() in ["yes","yes!","yeah","yep","ok","okay","confirm","place it","do it"]:
+    _qs = query.lower().strip().rstrip("!.")
+    if _qs in ["yes","yeah","yep","ok","okay","confirm","place it","do it","yess","yesss","sure","proceed","go ahead","place order"]:
         resolved = session_store[session_id].get("resolved_address")
         if not resolved:
             return {"answer": "Opening checkout!", "products": [], "session_id": session_id, "open_checkout": True}
@@ -643,7 +669,8 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                     return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
 
     # ── Size filter on existing products ──
-    sizes = ["xs","s-","s ","small","-m-","m-","m ","medium","-l-","l-","l ","large","xl","xxl","2xl"]
+    print(f"[SIZE CHECK] query={query}, has_prods={bool(session_store[session_id].get('last_products'))}")
+    sizes = ["-xs-","xs ","x-small"," s "," small ","-m-","m ","medium","-l-","l ","large","-xl-","xl ","xxl","2xl"]
     if any(sz in query.lower() for sz in sizes) and session_store[session_id].get("last_products"):
         existing = session_store[session_id]["last_products"]
         size_word = next((sz.strip("-").strip() for sz in sizes if sz in query.lower()), None)
@@ -652,51 +679,6 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
             if filtered:
                 session_store[session_id]["last_products"] = filtered
                 return {"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id}
-    # ── Product description intent ──
-    _desc_intent = llm_chat(f"""Does this message ask for product description/details? Reply ONLY yes or no.
-Message: "{query}"
-Answer:""").strip().lower().startswith("yes")
-    if _desc_intent:
-        last_products = session_store[session_id].get("last_products", [])
-        if last_products:
-            # Find best matching product
-            query_words = [w.lower() for w in query.split() if len(w)>3]
-            # Score by matching words, prefer longer matches
-            def score(p):
-                name = p["name"].lower()
-                return sum(len(w) for w in query_words if w in name)
-            best = max(last_products, key=score, default=last_products[0])
-            conn = get_db()
-            cur = conn.cursor()
-            cur.execute("SELECT description FROM products WHERE sku = %s", (best["sku"],))
-            row = cur.fetchone()
-            cur.close()
-            conn.close()
-            import re
-            desc = re.sub('<[^<]+?>', ' ', row[0] or '').strip() if row and row[0] else "No description available."
-            session_store[session_id]["last_products"] = [best]
-            return {"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id}
-    # ── Remove from cart by name ──
-    if any(kw in query.lower() for kw in ["remove", "delete from cart", "take out", "don't want"]):
-        cart = cart_store.get(session_id, [])
-        if not cart:
-            return {"answer": "Your cart is empty!", "products": [], "session_id": session_id}
-        removed = []
-        for item in cart[:]:
-            if any(w in item["name"].lower() for w in query.lower().split() if len(w)>3):
-                cart.remove(item)
-                removed.append(item["name"])
-        if removed:
-            cart_store[session_id] = cart
-            total = sum(i["price"]*i["qty"] for i in cart)
-            return {"answer": f"Removed {', '.join(removed)} from cart! New total: ${round(total,2)}", "products": [], "session_id": session_id, "cart": cart, "cart_total": round(total,2)}
-        else:
-            return {"answer": "I couldn't find that item in your cart.", "products": [], "session_id": session_id}
-
-    # ── Store categories intent ──
-    if any(kw in query.lower() for kw in ["categories", "what do you sell", "what categories", "what products", "store have", "available in"]):
-        return {"answer": "🛍️ Here are the categories available in our store:\n\n1. 👕 **Tops** — 560 products\n2. 👖 **Bottoms** — 472 products\n3. 🧥 **Jackets** — 266 products\n4. 💪 **Sports Wear** — 262 products\n5. 👚 **Hoodies** — 198 products\n6. 👜 **Bags** — 12 products\n7. 📦 **Others** — 270 products\n\nSay **show jackets**, **show bags** etc. to browse!", "products": [], "session_id": session_id}
-    is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     is_buy_intent = (llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)) and not is_checkout_only
     is_delivery_also = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     if is_buy_intent:
