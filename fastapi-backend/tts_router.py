@@ -55,3 +55,8 @@ async def list_voices():
         {"ShortName": "aura-zeus-en",    "FriendlyName": "Zeus (Male)"},
         {"ShortName": "aura-orion-en",   "FriendlyName": "Orion (Male)"},
     ]}
+
+@router.get("/greeting")
+async def get_greeting(name: str = "there"):
+    greeting = f"Hi {name}! I'm Aria, your personal shopping assistant. I can help you find products, manage your cart, and place orders. Just tell me what you're looking for!"
+    return await speak_get(text=greeting)
