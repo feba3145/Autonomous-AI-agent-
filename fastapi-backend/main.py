@@ -508,7 +508,7 @@ def rag_chat(payload: ChatRequest):
     existing_prods = session_store[session_id].get("last_products", [])
     if not saved_prods:
         products = apply_filters(products, query)
-    session_store[session_id]["last_products"] = products
+        session_store[session_id]["last_products"] = products
     # ── Delivery intent (smart — also handles add+deliver in one message) ──
     llm_index = 0
     llm_intent = "other"
@@ -749,8 +749,7 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                     "session_id": session_id
                 }
             last_products = products
-            products = apply_filters(products, query)
-    session_store[session_id]["last_products"] = products
+        session_store[session_id]["last_products"] = products
 
         # Try best name match - score each product by how many query words match
         query_words = [w.lower() for w in query.split() if len(w)>3]
