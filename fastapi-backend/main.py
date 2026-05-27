@@ -199,6 +199,52 @@ JSON:"""
         print(f"[RERANK ERROR] {e}")
     return products[:5]
 
+
+def extract_filters(query):
+    filters = {}
+    q = query.lower()
+    import re
+    price_match = re.search(r'under\s+[$₹]?(\d+)', q)
+    if price_match:
+        filters["max_price"] = float(price_match.group(1))
+    return filters
+
+
+def extract_colors(query):
+    colors = ["black","white","red","blue","green","yellow","pink","gray","grey","brown","orange","purple"]
+    q = query.lower()
+    for c in colors:
+        if c in q:
+            return c
+    return None
+
+
+def extract_size(query):
+    sizes = ["xs","small","medium","large","xl","xxl"]
+    q = query.lower()
+    for s in sizes:
+        if f" {s} " in f" {q} ":
+            return s.upper()
+    return None
+
+
+def apply_filters(products, query):
+    filters = extract_filters(query)
+    color = extract_colors(query)
+    size = extract_size(query)
+    result = []
+    for p in products:
+        name = p.get("name","").lower()
+        price = float(p.get("price", 0))
+        if "max_price" in filters and price > filters["max_price"]:
+            continue
+        if color and color not in name:
+            continue
+        if size and f'-{size}-' not in p.get("name","").upper():
+            continue
+        result.append(p)
+    return result if result else products[:5]
+
 def get_db():
     conn = psycopg2.connect(
         host=os.getenv("DB_HOST"),
@@ -461,7 +507,8 @@ def rag_chat(payload: ChatRequest):
     # ✅ FIX: Save products to session EARLY so all intent checks below can use them
     existing_prods = session_store[session_id].get("last_products", [])
     if not saved_prods:
-        session_store[session_id]["last_products"] = products
+        products = apply_filters(products, query)
+    session_store[session_id]["last_products"] = products
     # ── Delivery intent (smart — also handles add+deliver in one message) ──
     llm_index = 0
     llm_intent = "other"
@@ -702,7 +749,8 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                     "session_id": session_id
                 }
             last_products = products
-            session_store[session_id]["last_products"] = products
+            products = apply_filters(products, query)
+    session_store[session_id]["last_products"] = products
 
         # Try best name match - score each product by how many query words match
         query_words = [w.lower() for w in query.split() if len(w)>3]
