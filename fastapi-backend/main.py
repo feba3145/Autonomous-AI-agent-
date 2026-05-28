@@ -244,9 +244,15 @@ def apply_filters(products, query):
             continue
         if size and f'-{size}-' not in p.get("name","").upper():
             continue
-        if gender == "male" and not any(w in name or w in sku for w in ["men","man","boy","male","m-","mj","mb","mh","mg"]):
+        if gender == "male" and not (
+            any(w in name for w in ["men","man","boy","male"]) or
+            any(sku.startswith(p) for p in ["mj","mb","mh","mg","mo","mp"])
+        ):
             continue
-        if gender == "female" and not any(w in name or w in sku for w in ["women","woman","girl","female","w-","wj","wb","wh","wg"]):
+        if gender == "female" and not (
+            any(w in name for w in ["women","woman","girl","female"]) or
+            any(sku.startswith(p) for p in ["wj","wb","wh","wg","wo","wp"])
+        ):
             continue
         result.append(p)
     return result if result else products[:5]
@@ -568,9 +574,17 @@ def rag_chat(payload: ChatRequest):
         # ── If user also wants to add to cart, do that first ──
         if is_also_buy:
             last_products = session_store[session_id].get("last_products", [])
+            # Try to find product by name in query
+            top = None
+            qwords = [w for w in query.lower().split() if len(w)>3]
             if last_products:
-                chosen_idx = max(0, min(llm_index, len(last_products) - 1))
-                top = last_products[chosen_idx]
+                scores = [(sum(1 for w in qwords if w in p["name"].lower()), p) for p in last_products]
+                best_score, top = max(scores, key=lambda x: x[0])
+                if best_score == 0:
+                    conn_buy = get_db(); cur_buy = conn_buy.cursor()
+                    cur_buy.execute("SELECT sku,name,price,image FROM products WHERE " + " OR ".join([f"name ILIKE %s" for w in qwords if len(w)>4]) + " LIMIT 1", [f"%{w}%" for w in qwords if len(w)>4])
+                    r_buy = cur_buy.fetchone(); cur_buy.close(); conn_buy.close()
+                    if r_buy: top = {"sku":r_buy[0],"name":r_buy[1],"price":float(r_buy[2]),"image":r_buy[3]}
                 if session_id not in cart_store:
                     cart_store[session_id] = []
                 existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
@@ -623,7 +637,8 @@ def rag_chat(payload: ChatRequest):
                 for kw in DELIVERY_KEYWORDS:
                     if kw in query.lower():
                         rest = query.lower().split(kw, 1)[-1].strip()
-                        label_hint = rest.split()[0] if rest else ""
+                        words = [w for w in rest.split() if w not in ["my","the","a","an","this","that"]]
+                        label_hint = words[0] if words else ""
                         break
                 return {
                     "answer": f"I don't have a saved address for **{label_hint or 'that location'}** yet. Please click the 📍 button above to add this address!",
