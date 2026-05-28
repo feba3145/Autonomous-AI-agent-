@@ -232,9 +232,11 @@ def apply_filters(products, query):
     filters = extract_filters(query)
     color = extract_colors(query)
     size = extract_size(query)
+    gender = extract_gender(query)
     result = []
     for p in products:
         name = p.get("name","").lower()
+        sku = p.get("sku","").lower()
         price = float(p.get("price", 0))
         if "max_price" in filters and price > filters["max_price"]:
             continue
@@ -242,8 +244,40 @@ def apply_filters(products, query):
             continue
         if size and f'-{size}-' not in p.get("name","").upper():
             continue
+        if gender == "male" and not any(w in name or w in sku for w in ["men","man","boy","male","m-","mj","mb","mh","mg"]):
+            continue
+        if gender == "female" and not any(w in name or w in sku for w in ["women","woman","girl","female","w-","wj","wb","wh","wg"]):
+            continue
         result.append(p)
     return result if result else products[:5]
+
+
+def extract_gender(query):
+    q = query.lower()
+    male = ["men","man","male","boy","boys","gents","his","he","gentleman"]
+    female = ["women","woman","female","girl","girls","ladies","her","she","lady","womens","mens"]
+    unisex = ["unisex","both","all","everyone"]
+    for w in unisex:
+        if w in q: return "unisex"
+    for w in female:
+        if w in q: return "female"
+    for w in male:
+        if w in q: return "male"
+    return None
+
+
+def extract_gender(query):
+    q = query.lower()
+    male = ["men","man","male","boy","boys","gents","his","he","gentleman"]
+    female = ["women","woman","female","girl","girls","ladies","her","she","lady","womens","mens"]
+    unisex = ["unisex","both","all","everyone"]
+    for w in unisex:
+        if w in q: return "unisex"
+    for w in female:
+        if w in q: return "female"
+    for w in male:
+        if w in q: return "male"
+    return None
 
 def get_db():
     conn = psycopg2.connect(
@@ -264,6 +298,16 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/categories")
+def get_categories():
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, slug, icon, keywords, product_count FROM product_categories WHERE is_active=true ORDER BY product_count DESC")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+    return [{"id":r[0],"name":r[1],"slug":r[2],"icon":r[3],"keywords":r[4].split(",") if r[4] else [],"product_count":r[5]} for r in rows]
 
 @app.get("/coupons")
 def get_coupons():
@@ -645,6 +689,16 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
             desc = _re3.sub('<[^<]+?>',' ',row[0] or '').strip() if row and row[0] else "No description available."
             session_store[session_id]["last_products"] = [best]
             return {"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id}
+    # ── Store categories intent ──
+    if any(kw in query.lower() for kw in ["categories","what do you sell","what categories","what products","store have","can i buy","do you sell","what can i","available products"]):
+        conn_cat = get_db()
+        cur_cat = conn_cat.cursor()
+        cur_cat.execute("SELECT name, icon, product_count FROM product_categories WHERE is_active=true ORDER BY product_count DESC")
+        cats = cur_cat.fetchall()
+        cur_cat.close()
+        conn_cat.close()
+        cat_list = "\n".join([f"{i+1}. {c[1]} **{c[0]}** — {c[2]} products" for i,c in enumerate(cats)])
+        return {"answer": f"🛍️ Here are all our product categories:\n\n{cat_list}\n\nSay **show tops**, **show jackets** etc. to browse!", "products": [], "session_id": session_id}
     is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     # ── Buy intent ──
     if session_store[session_id].get("pending_checkout"):
