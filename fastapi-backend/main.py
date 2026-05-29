@@ -559,11 +559,43 @@ def rag_chat(payload: ChatRequest):
     if not saved_prods:
         products = apply_filters(products, query)
         session_store[session_id]["last_products"] = products
-    # ── Delivery intent (smart — also handles add+deliver in one message) ──
+    # ── Delivery + optional add-to-cart intent (fully LLM-driven) ──
+    import json as _json2, re as _re3
     llm_index = 0
     llm_intent = "other"
-    is_delivery_intent = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
-    is_also_buy = any(kw in query.lower() for kw in BUY_KEYWORDS) and not any(kw in query.lower() for kw in ["home address", "office address", "my address", "deliver it"])
+    llm_address_label = ""
+    _last_prods_early = session_store[session_id].get("last_products", [])
+    _prod_list_early = "\n".join([f"{i+1}. {p['name']} (${p['price']})" for i, p in enumerate(_last_prods_early)]) if _last_prods_early else "none"
+    _early_intent_prompt = f"""You are a shopping assistant intent classifier.
+
+Currently shown products:
+{_prod_list_early}
+
+User message: "{query}"
+
+Return ONLY a JSON object:
+- "intent": "add_to_cart", "search", "deliver", "add_and_deliver", or "other"
+- "product_index": 0-based index of product user wants to add. -1 if none.
+- "address_label": delivery location like "home", "office". Empty string if none.
+
+Use "add_and_deliver" when user wants both add to cart AND deliver in one message.
+Match product by name from the list above."""
+
+    try:
+        _early_raw = llm_chat(_early_intent_prompt).strip()
+        _early_match = _re3.search(r'\{.*\}', _early_raw, _re3.DOTALL)
+        _early_data = _json2.loads(_early_match.group()) if _early_match else {}
+    except:
+        _early_data = {}
+
+    llm_intent = _early_data.get("intent", "other")
+    llm_index = int(_early_data.get("product_index", 0))
+    llm_address_label = _early_data.get("address_label", "").strip().lower()
+    print(f"[EARLY INTENT] {llm_intent} | index={llm_index} | address={llm_address_label}")
+
+    is_delivery_intent = llm_intent in ("deliver", "add_and_deliver")
+    is_also_buy = llm_intent == "add_and_deliver"
+
     if is_delivery_intent:
         cid = session_store[session_id].get("customer_id", 0)
         if not cid:
@@ -571,39 +603,26 @@ def rag_chat(payload: ChatRequest):
                 "answer": "Please login first so I can find your saved addresses! 🔐",
                 "products": [], "session_id": session_id, "requires_login": True
             }
-        # ── If user also wants to add to cart, do that first ──
-        if is_also_buy:
-            last_products = session_store[session_id].get("last_products", [])
-            # Try to find product by name in query
-            top = None
-            qwords = [w for w in query.lower().split() if len(w)>3]
-            if last_products:
-                scores = [(sum(1 for w in qwords if w in p["name"].lower()), p) for p in last_products]
-                best_score, top = max(scores, key=lambda x: x[0])
-                if best_score == 0:
-                    conn_buy = get_db(); cur_buy = conn_buy.cursor()
-                    cur_buy.execute("SELECT sku,name,price,image FROM products WHERE " + " OR ".join([f"name ILIKE %s" for w in qwords if len(w)>4]) + " LIMIT 1", [f"%{w}%" for w in qwords if len(w)>4])
-                    r_buy = cur_buy.fetchone(); cur_buy.close(); conn_buy.close()
-                    if r_buy: top = {"sku":r_buy[0],"name":r_buy[1],"price":float(r_buy[2]),"image":r_buy[3]}
-                if session_id not in cart_store:
-                    cart_store[session_id] = []
-                existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
-                if existing:
-                    existing["qty"] += 1
-                else:
-                    cart_store[session_id].append({
-                        "sku": top["sku"],
-                        "name": top["name"],
-                        "price": top["price"],
-                        "qty": 1
-                    })
+        # ── If user also wants to add to cart, do that first using LLM index ──
+        if is_also_buy and _last_prods_early:
+            top = _last_prods_early[llm_index] if 0 <= llm_index < len(_last_prods_early) else _last_prods_early[0]
+            if session_id not in cart_store:
+                cart_store[session_id] = []
+            existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
+            if existing:
+                existing["qty"] += 1
+            else:
+                cart_store[session_id].append({"sku": top["sku"], "name": top["name"], "price": top["price"], "qty": 1})
+            print(f"[ADD+DELIVER] Added {top['name']} to cart")
         # ── Now resolve delivery address ──
         try:
             from address_router import resolve_address, ResolveRequest
-            addr = resolve_address(ResolveRequest(customer_id=cid, query=query))
+            _addr_query = llm_address_label if llm_address_label else query
+            addr = resolve_address(ResolveRequest(customer_id=cid, query=_addr_query))
+            print(f"[RESOLVE] using query={_addr_query}")
             cart = cart_store.get(session_id, [])
             total = sum(i["price"] * i["qty"] for i in cart)
-            item_msg = f"Added **{top['name']}** to cart. " if is_also_buy and last_products else ""
+            item_msg = f"Added **{top['name']}** to cart. " if is_also_buy and _last_prods_early else ""
             return {
                 "answer": f"{item_msg}I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**. Say **yes** to place the order!",
                 "products": session_store[session_id].get("last_products", []),
@@ -632,21 +651,16 @@ def rag_chat(payload: ChatRequest):
                 pass
         except Exception as e:
             err = str(e)
+            print(f"[ADDRESS ERROR] {err}")
             if "404" in err or "No saved address" in err or "matched" in err:
-                label_hint = ""
-                for kw in DELIVERY_KEYWORDS:
-                    if kw in query.lower():
-                        rest = query.lower().split(kw, 1)[-1].strip()
-                        words = [w for w in rest.split() if w not in ["my","the","a","an","this","that"]]
-                        label_hint = words[0] if words else ""
-                        break
                 return {
-                    "answer": f"I don't have a saved address for **{label_hint or 'that location'}** yet. Please click the 📍 button above to add this address!",
+                    "answer": f"I don't have a saved address for **{llm_address_label or 'that location'}** yet. Please click the 📍 button above to add this address!",
                     "products": [],
                     "session_id": session_id,
                     "requires_address": True,
-                    "suggested_label": label_hint
+                    "suggested_label": llm_address_label
                 }
+            print(f"[ADDRESS UNEXPECTED ERROR] {err}")
             pass
     # ── LLM Intent Detection (fully LLM-driven, no hardcoding) ──
     import json as _json, re as _re
