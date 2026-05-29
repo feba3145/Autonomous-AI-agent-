@@ -648,38 +648,48 @@ def rag_chat(payload: ChatRequest):
                     "suggested_label": label_hint
                 }
             pass
-    # ── LLM Intent Detection ──
+    # ── LLM Intent Detection (fully LLM-driven, no hardcoding) ──
+    import json as _json, re as _re
     last_products = session_store[session_id].get("last_products", [])
+    product_list_text = "\n".join([f"{i+1}. {p['name']} (${p['price']})" for i, p in enumerate(last_products)]) if last_products else "none"
+
+    intent_prompt = f"""You are a shopping assistant intent classifier. Given the user message and the list of currently shown products, return a JSON object.
+
+Currently shown products:
+{product_list_text}
+
+User message: "{query}"
+
+Return ONLY a JSON object with these fields:
+- "intent": one of "add_to_cart", "search", "deliver", "other"
+- "product_index": (integer, 0-based) index of the product the user is referring to from the list above. Use -1 if not referring to a specific product or if intent is search.
+- "address_label": (string) delivery location label like "home", "office", "work" etc. Empty string if not a delivery intent.
+
+Rules:
+- "add_to_cart" when user wants to add, buy, purchase, or order a specific product
+- "search" when user is looking for, browsing, or asking about products
+- "deliver" when user wants to deliver or ship to an address
+- Match product by name — pick the closest match from the list above
+- If user names a product not in the list, set product_index to -1
+
+Reply with ONLY the JSON, no explanation."""
+
     try:
-        product_list_text = ", ".join([f"{i+1}. {p['name']}" for i, p in enumerate(last_products)]) if last_products else "none"
-        intent_prompt = f"""Classify intent. Products: {product_list_text}. Message: "{query}"
-Reply JSON only: {{"intent":"add_to_cart","index":0}} or {{"intent":"search","index":-1}} or {{"intent":"other","index":-1}}
-index=0 for first, 1 for second, 2 for third product.
-add_to_cart ONLY if user explicitly says: add, buy, purchase, put in cart, order this, take this, i'll take, give me the [specific product].
-DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what about, i need, give me options, what size."""
-        _int_resp = llm_chat(intent_prompt)
-        intent_res = type("R", (), {"json": lambda self: {"response": _int_resp}})()
-        import json as _json, re as _re
-        raw_intent = intent_res.json().get("response", "{}").strip()
-        json_match = _re.search(r'\{.*\}', raw_intent, _re.DOTALL)
+        raw_intent = llm_chat(intent_prompt).strip()
+        json_match = _re.search(r'{.*}', raw_intent, _re.DOTALL)
         intent_data = _json.loads(json_match.group()) if json_match else {}
     except Exception as _e:
         print(f"[INTENT ERROR] {_e}")
         intent_data = {}
 
     llm_intent = intent_data.get("intent", "other")
-    llm_index = int(intent_data.get("index", 0))
+    llm_index = int(intent_data.get("product_index", 0))
+    llm_address_label = intent_data.get("address_label", "").strip().lower()
+    print(f"[INTENT] {llm_intent} | index={llm_index} | address={llm_address_label} | query={query}")
+
     # Restore existing products if user is adding to cart
-    existing_prods = session_store[session_id].get("last_products", [])
-    if existing_prods and llm_intent == "add_to_cart":
-        products = existing_prods
-    import re as _re2
-    ordinal_match = _re2.search(r'\b(1st|first|2nd|second|3rd|third|4th|fourth|5th|fifth)\b', query.lower())
-    if ordinal_match:
-        ordinal_map = {"1st":0,"first":0,"2nd":1,"second":1,"3rd":2,"third":2,"4th":3,"fourth":3,"5th":4,"fifth":4}
-        llm_index = ordinal_map.get(ordinal_match.group(), 0)
-        if any(kw in query.lower() for kw in BUY_KEYWORDS + DELIVERY_KEYWORDS):
-            llm_intent = "add_to_cart"
+    if last_products and llm_intent == "add_to_cart":
+        products = last_products
 
     print(f"[DESC_PRE] reached desc check for: {query}")
     # ── Product description intent (before buy intent) ──
@@ -785,16 +795,17 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
                     return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
 
     # ── Size filter on existing products ──
-    print(f"[SIZE CHECK] query={query}, has_prods={bool(session_store[session_id].get('last_products'))}")
-    sizes = ["-xs-","xs ","x-small"," s "," small ","-m-","m ","medium","-l-","l ","large","-xl-","xl ","xxl","2xl"]
-    if any(sz in query.lower() for sz in sizes) and session_store[session_id].get("last_products"):
+    # Only triggers on explicit size words, skips if user is adding to cart
+    import re as _re_size
+    _size_match = _re_size.search(r'\b(x-small|small|medium|large|x-large|xxl|2xl|\bxs\b|\bxl\b)\b|\bsize\s+[smlx]{1,3}\b', query.lower())
+    _is_cart_action = any(w in query.lower() for w in ["add", "buy", "cart", "order", "purchase"])
+    if _size_match and not _is_cart_action and session_store[session_id].get("last_products"):
         existing = session_store[session_id]["last_products"]
-        size_word = next((sz.strip("-").strip() for sz in sizes if sz in query.lower()), None)
-        if size_word:
-            filtered = [p for p in existing if size_word.upper() in p["name"].upper() or f"-{size_word.upper()}-" in p["name"].upper()]
-            if filtered:
-                session_store[session_id]["last_products"] = filtered
-                return {"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id}
+        size_word = _size_match.group().strip().split()[-1].upper()
+        filtered = [p for p in existing if size_word in p["name"].upper()]
+        if filtered:
+            session_store[session_id]["last_products"] = filtered
+            return {"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id}
     is_buy_intent = (llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)) and not is_checkout_only
     is_delivery_also = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     if is_buy_intent:
@@ -820,20 +831,12 @@ DO NOT use add_to_cart for: need, want, show, find, looking for, suggest, what a
             last_products = products
         session_store[session_id]["last_products"] = products
 
-        # Try best name match - score each product by how many query words match
-        query_words = [w.lower() for w in query.split() if len(w)>3]
-        best_score = 0
-        best_match = None
-        for p in last_products:
-            score = sum(1 for w in query_words if w in p["name"].lower())
-            if score > best_score:
-                best_score = score
-                best_match = p
-        if best_match and best_score >= 2:
-            top = best_match
+        # ── LLM already matched the product by name, just use its index ──
+        if 0 <= llm_index < len(last_products):
+            top = last_products[llm_index]
         else:
-            chosen_idx = max(0, min(llm_index, len(last_products) - 1))
-            top = last_products[chosen_idx]
+            top = last_products[0]
+        print(f"[ADD TO CART] Picked: {top['name']} (index={llm_index})")
         if session_id not in cart_store:
             cart_store[session_id] = []
         existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
