@@ -683,6 +683,36 @@ def rag_chat(payload: ChatRequest):
                 "requires_login": True
             })
 
+    # ── Filter from existing products if user refers to current list ──
+    _ref_words = ["the one", "this one", "that one", "medium size", "small size", "large size", "xl size", "xs size", "the medium", "the small", "the large", "the blue", "the red", "the black", "the white", "the green", "previous", "that jacket", "that bag", "that watch", "that shirt"]
+    _last_prods = session_store[session_id].get("last_products", [])
+    if any(w in query.lower() for w in _ref_words) and _last_prods and llm_intent != "add_to_cart":
+        import re as _re_ref
+        # Extract size/color from query and filter last_products directly
+        _size_map = {"xs":"XS","s":"S-","small":"S-","m":"M-","medium":"M-","l":"L-","large":"L-","xl":"XL","xxl":"XXL"}
+        _color_words = ["blue","red","black","white","green","gray","grey","pink","yellow","orange","purple","brown"]
+        _q_lower = query.lower()
+        _filtered = list(_last_prods)
+        # Filter by color
+        for _col in _color_words:
+            if _col in _q_lower:
+                _col_filtered = [p for p in _filtered if _col.upper() in p["name"].upper() or _col.capitalize() in p["name"]]
+                if _col_filtered:
+                    _filtered = _col_filtered
+                break
+        # Filter by size
+        for _sz_word, _sz_code in _size_map.items():
+            if _re_ref.search(r"" + _sz_word + r"", _q_lower):
+                _sz_filtered = [p for p in _filtered if f"-{_sz_code}" in p["name"] or p["name"].upper().endswith(_sz_code)]
+                if _sz_filtered:
+                    _filtered = _sz_filtered
+                    break
+        print(f"[REF FILTER] query={query} | last={len(_last_prods)} | filtered={len(_filtered)}")
+        if _filtered and len(_filtered) < len(_last_prods):
+            session_store[session_id]["last_products"] = _filtered
+            _ans = llm_chat(f"Show these products naturally, customer wanted {query}: {[p['name'] for p in _filtered]}", history=history)
+            return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
+
     # ── RAG search ──
     try:
         _ir_resp = llm_chat(f"What product is the user looking for? Query: '{query}'. Reply with ONLY the product category (e.g. bag, jacket, shoes, tshirt). One or two words max. No explanation.")
@@ -774,7 +804,9 @@ Return ONLY a JSON object:
 - "address_label": delivery location like "home", "office". Empty string if none.
 
 Use "add_and_deliver" when user wants both add to cart AND deliver in one message.
-Match product by name from the list above."""
+Match product by name from the list above.
+IMPORTANT: "I need", "I want", "show me", "give me" = search NOT add_to_cart.
+Only use add_to_cart for: add, buy, purchase, put in cart, order."""
 
     try:
         _early_raw = llm_chat(_early_intent_prompt).strip()
@@ -787,6 +819,31 @@ Match product by name from the list above."""
     llm_index = int(_early_data.get("product_index", 0))
     llm_address_label = _early_data.get("address_label", "").strip().lower()
     print(f"[EARLY INTENT] {llm_intent} | index={llm_index} | address={llm_address_label}")
+
+    # ── Filter from existing products if user refers to current list ──
+    import re as _re_ref
+    _ref_words = ["the one", "this one", "that one", "medium size", "small size", "large size", "xl size", "xs size", "the medium", "the small", "the large", "the blue", "the red", "the black", "the white", "the green", "previous", "that jacket", "that bag", "that watch", "that shirt"]
+    _last_prods = session_store[session_id].get("last_products", [])
+    if any(w in query.lower() for w in _ref_words) and _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver"):
+        _size_map = {"xs":"XS","small":"S-","medium":"M-","large":"L-","xl":"XL","xxl":"XXL"}
+        _color_words = ["blue","red","black","white","green","gray","grey","pink","yellow","orange","purple","brown"]
+        _q_lower = query.lower()
+        _filtered = list(_last_prods)
+        for _col in _color_words:
+            if _col in _q_lower:
+                _col_f = [p for p in _filtered if _col.upper() in p["name"].upper()]
+                if _col_f: _filtered = _col_f
+                break
+        for _sz_word, _sz_code in _size_map.items():
+            if _re_ref.search(r"\b" + _sz_word + r"\b", _q_lower):
+                _sz_f = [p for p in _filtered if f"-{_sz_code}" in p["name"]]
+                if _sz_f: _filtered = _sz_f
+                break
+        print(f"[REF FILTER] last={len(_last_prods)} filtered={len(_filtered)}")
+        if _filtered and len(_filtered) < len(_last_prods):
+            session_store[session_id]["last_products"] = _filtered
+            _ans = llm_chat(f"Customer wanted: {query}. Show these naturally: {[p['name'] for p in _filtered]}", history=history)
+            return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
 
     is_delivery_intent = llm_intent in ("deliver", "add_and_deliver")
     is_also_buy = llm_intent == "add_and_deliver"
@@ -875,9 +932,10 @@ Return ONLY a JSON object with these fields:
 - "address_label": (string) delivery location label like "home", "office", "work" etc. Empty string if not a delivery intent.
 
 Rules:
-- "add_to_cart" when user wants to add, buy, purchase, or order a specific product
-- "search" when user is looking for, browsing, or asking about products
+- "add_to_cart" ONLY when user explicitly says: add, buy, purchase, put in cart, order, take this, I'll take
+- "search" when user says: need, want, show, find, looking for, suggest, what about, I need, give me, previous, the one, similar
 - "deliver" when user wants to deliver or ship to an address
+- "I need" and "I want" are ALWAYS "search", never "add_to_cart"
 - Match product by name — pick the closest match from the list above
 - If user names a product not in the list, set product_index to -1
 
