@@ -108,6 +108,20 @@ and recommend the most relevant products from the context.
 If asked to buy, add to cart or place order, process it immediately."""
 
 # ─── SESSION CLEANUP ───
+def save_chat_message(session_id: str, role: str, message: str, customer_id: int = 0):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO chat_history (customer_id, session_id, role, message) VALUES (%s, %s, %s, %s)",
+            (customer_id or 0, session_id, role, message)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"[CHAT_SAVE ERROR] {e}")
+
 def cleanup_sessions():
     while True:
         time.sleep(300)
@@ -374,6 +388,13 @@ def chat(payload: ChatRequest):
 # ─── RAG CHAT ───
 @app.post("/rag-chat")
 def rag_chat(payload: ChatRequest):
+    def _save_and_return(resp: dict) -> dict:
+        try:
+            cid = session_store.get(payload.session_id, {}).get("customer_id", 0)
+            save_chat_message(payload.session_id, "assistant", resp.get("answer", ""), cid)
+        except:
+            pass
+        return resp
     query = payload.query
     session_id = payload.session_id
 
@@ -388,6 +409,8 @@ def rag_chat(payload: ChatRequest):
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id].get("history", [])
     print(f"[RAG_START] query={query}")
+    _cid = session_store.get(session_id, {}).get("customer_id", 0)
+    save_chat_message(session_id, "user", query, _cid)
     
   
   # ── Early tracking check — must come before buy intent ──
@@ -401,7 +424,7 @@ def rag_chat(payload: ChatRequest):
         if not order_id:
             # Auto-fetch latest order
             if not session_store[session_id].get("logged_in"):
-                return {"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True}
+                return _save_and_return({"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True})
             email = session_store[session_id].get("email")
             if email:
                 orders = mcp.get_customer_orders(email)
@@ -410,12 +433,12 @@ def rag_chat(payload: ChatRequest):
                     order_id = items[0].get("increment_id")
                     session_store[session_id]["last_order_id"] = order_id
             if not order_id:
-                return {"answer": "Please provide your order number. Example: track order 000000001", "products": [], "session_id": session_id}
+                return _save_and_return({"answer": "Please provide your order number. Example: track order 000000001", "products": [], "session_id": session_id})
         session_store[session_id]["last_order_id"] = order_id
         result = mcp.get_tracking_info(order_id)
         tracks = result.get("tracks", [])
         if not tracks:
-            return {"answer": "Order " + order_id + " is being processed. No shipment yet.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Order " + order_id + " is being processed. No shipment yet.", "products": [], "session_id": session_id})
         t = tracks[0]
         status = result.get("order_status","processing")
         status_map = {"pending":"🕐 Order Received","processing":"⚙️ Processing","complete":"✅ Delivered","shipped":"🚚 Shipped","canceled":"❌ Cancelled"}
@@ -429,7 +452,7 @@ def rag_chat(payload: ChatRequest):
         if tracking_no: answer += f"Tracking No: **{tracking_no}**\n"
         if ship_date: answer += f"Shipped on: {ship_date}\n"
         natural = aria_say(f"Order {order_id} tracking info", answer)
-        return {"answer": natural, "products": [], "session_id": session_id}
+        return _save_and_return({"answer": natural, "products": [], "session_id": session_id})
 
     is_buy_intent_early = any(kw in query.lower() for kw in BUY_KEYWORDS)
     is_cancel_early = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
@@ -438,34 +461,34 @@ def rag_chat(payload: ChatRequest):
         import re
         coupon_match = re.search(r"\b[A-Z0-9]{4,15}\b", query.upper())
         if not coupon_match:
-            return {"answer": "Please provide your coupon code. Example: apply coupon H20", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please provide your coupon code. Example: apply coupon H20", "products": [], "session_id": session_id})
         coupon_code = coupon_match.group()
         cart = cart_store.get(session_id, [])
         if not cart:
-            return {"answer": "Your cart is empty. Please add products first before applying a coupon.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Your cart is empty. Please add products first before applying a coupon.", "products": [], "session_id": session_id})
         session_store[session_id]["coupon"] = coupon_code
-        return {"answer": "Coupon " + coupon_code + " has been applied to your cart! The discount will be applied at checkout.", "products": [], "session_id": session_id, "coupon": coupon_code}
+        return _save_and_return({"answer": "Coupon " + coupon_code + " has been applied to your cart! The discount will be applied at checkout.", "products": [], "session_id": session_id, "coupon": coupon_code})
     if is_cancel_early:
         import re
         order_match = re.search(r"\b0+\d+\b", query)
         order_id = order_match.group() if order_match else None
         if not order_id:
-            return {"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id})
         from mcp_client import mcp
         result = mcp.cancel_order(order_id)
         if result:
-            return {"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id}
-        return {"answer": "Could not cancel order " + order_id + ". It may already be shipped.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id})
+        return _save_and_return({"answer": "Could not cancel order " + order_id + ". It may already be shipped.", "products": [], "session_id": session_id})
     is_order_history_early = any(kw in query.lower() for kw in ORDER_HISTORY_KEYWORDS)
     if is_order_history_early:
         from mcp_client import mcp
         if not session_store[session_id].get("logged_in", False):
-            return {"answer": "Please login to view your orders.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please login to view your orders.", "products": [], "session_id": session_id})
         email = session_store[session_id].get("email", "roni_cost@example.com")
         result = mcp.get_customer_orders(email)
         orders = result.get("items", [])
         if not orders:
-            return {"answer": "No orders found for your account.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "No orders found for your account.", "products": [], "session_id": session_id})
         order_list = ", ".join(["Order " + o["increment_id"] + " - " + o["status"] + " - $" + str(o["grand_total"]) for o in orders[:5]])
     is_return_early = any(kw in query.lower() for kw in RETURN_KEYWORDS)
     if is_return_early:
@@ -473,20 +496,20 @@ def rag_chat(payload: ChatRequest):
         order_match = re.search(r"\b0+\d+\b", query)
         order_id = order_match.group() if order_match else None
         if not order_id:
-            return {"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id})
         from mcp_client import mcp
         result = mcp.create_creditmemo(order_id)
         if result:
-            return {"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id}
-        return {"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id})
+        return _save_and_return({"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id})
         logged_in = session_store[session_id].get("logged_in", False)
         if not logged_in:
-            return {
+            return _save_and_return({
                 "answer": "To complete your purchase, please login first using POST /auth/login with your email and password",
                 "products": [],
                 "session_id": session_id,
                 "requires_login": True
-            }
+            })
 
     # ── RAG search ──
     try:
@@ -599,10 +622,10 @@ Match product by name from the list above."""
     if is_delivery_intent:
         cid = session_store[session_id].get("customer_id", 0)
         if not cid:
-            return {
+            return _save_and_return({
                 "answer": "Please login first so I can find your saved addresses! 🔐",
                 "products": [], "session_id": session_id, "requires_login": True
-            }
+            })
         # ── If user also wants to add to cart, do that first using LLM index ──
         if is_also_buy and _last_prods_early:
             top = _last_prods_early[llm_index] if 0 <= llm_index < len(_last_prods_early) else _last_prods_early[0]
@@ -623,14 +646,14 @@ Match product by name from the list above."""
             cart = cart_store.get(session_id, [])
             total = sum(i["price"] * i["qty"] for i in cart)
             item_msg = f"Added **{top['name']}** to cart. " if is_also_buy and _last_prods_early else ""
-            return {
+            return _save_and_return({
                 "answer": f"{item_msg}I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**. Say **yes** to place the order!",
                 "products": session_store[session_id].get("last_products", []),
                 "session_id": session_id,
                 "cart": cart,
                 "cart_total": round(total, 2),
                 "resolved_address": addr
-            }
+            })
             session_store[session_id]["resolved_address"] = addr
             # Show coupons before confirming
             try:
@@ -646,20 +669,20 @@ Match product by name from the list above."""
                     coupon_list = "\n".join([f"{i+1}. **{c[0]}** — {c[1]}" for i,c in enumerate(coupons2)])
                     cart = cart_store.get(session_id, [])
                     total = sum(i["price"]*i["qty"] for i in cart)
-                    return {"answer": f"I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**\n\n🎟️ Available offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to place order!", "products": [], "session_id": session_id, "cart": cart, "cart_total": round(total,2)}
+                    return _save_and_return({"answer": f"I'll deliver to your **{addr['display_label']}**: {addr['full_address']}. Total: **${round(total,2)}**\n\n🎟️ Available offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to place order!", "products": [], "session_id": session_id, "cart": cart, "cart_total": round(total,2)})
             except:
                 pass
         except Exception as e:
             err = str(e)
             print(f"[ADDRESS ERROR] {err}")
             if "404" in err or "No saved address" in err or "matched" in err:
-                return {
+                return _save_and_return({
                     "answer": f"I don't have a saved address for **{llm_address_label or 'that location'}** yet. Please click the 📍 button above to add this address!",
                     "products": [],
                     "session_id": session_id,
                     "requires_address": True,
                     "suggested_label": llm_address_label
-                }
+                })
             print(f"[ADDRESS UNEXPECTED ERROR] {err}")
             pass
     # ── LLM Intent Detection (fully LLM-driven, no hardcoding) ──
@@ -727,7 +750,7 @@ Reply with ONLY the JSON, no explanation."""
             import re as _re3
             desc = _re3.sub('<[^<]+?>',' ',row[0] or '').strip() if row and row[0] else "No description available."
             session_store[session_id]["last_products"] = [best]
-            return {"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id}
+            return _save_and_return({"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id})
     # ── Store categories intent ──
     if any(kw in query.lower() for kw in ["categories","what do you sell","what categories","what products","store have","can i buy","do you sell","what can i","available products"]):
         conn_cat = get_db()
@@ -737,14 +760,14 @@ Reply with ONLY the JSON, no explanation."""
         cur_cat.close()
         conn_cat.close()
         cat_list = "\n".join([f"{i+1}. {c[1]} **{c[0]}** — {c[2]} products" for i,c in enumerate(cats)])
-        return {"answer": f"🛍️ Here are all our product categories:\n\n{cat_list}\n\nSay **show tops**, **show jackets** etc. to browse!", "products": [], "session_id": session_id}
+        return _save_and_return({"answer": f"🛍️ Here are all our product categories:\n\n{cat_list}\n\nSay **show tops**, **show jackets** etc. to browse!", "products": [], "session_id": session_id})
     is_checkout_only = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     # ── Buy intent ──
     if session_store[session_id].get("pending_checkout"):
         q = query.lower().strip()
         if any(w in q for w in ["skip","no","continue","later"]):
             session_store[session_id]["pending_checkout"] = False
-            return {"answer": "Proceeding to checkout!", "products": [], "session_id": session_id, "open_checkout": True}
+            return _save_and_return({"answer": "Proceeding to checkout!", "products": [], "session_id": session_id, "open_checkout": True})
         import re as _rec
         query_upper = query.upper().replace(' ', '')
         code_match = _rec.search(r'\b[A-Z0-9]{4,15}\b', query.upper()) or _rec.search(r'[A-Z0-9]{4,15}', query_upper)
@@ -771,16 +794,16 @@ Reply with ONLY the JSON, no explanation."""
             session_store[session_id]["coupon"] = chosen["code"]
             session_store[session_id]["coupon_discount"] = discount
             session_store[session_id]["pending_checkout"] = False
-            return {"answer": f"Coupon **{chosen['code']}** applied!\n\nSubtotal: ${total}\nDiscount: -${discount}\nFinal Total: **${final}**\n\nSay **yes** to place the order!", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": f"Coupon **{chosen['code']}** applied!\n\nSubtotal: ${total}\nDiscount: -${discount}\nFinal Total: **${final}**\n\nSay **yes** to place the order!", "products": [], "session_id": session_id})
         else:
-            return {"answer": "Coupon not found. Say **skip** to continue or try another code.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Coupon not found. Say **skip** to continue or try another code.", "products": [], "session_id": session_id})
 
     # ── Yes to place order ──
     _qs = query.lower().strip().rstrip("!.")
     if _qs in ["yes","yeah","yep","ok","okay","confirm","place it","do it","yess","yesss","sure","proceed","go ahead","place order"]:
         resolved = session_store[session_id].get("resolved_address")
         if not resolved:
-            return {"answer": "Opening checkout!", "products": [], "session_id": session_id, "open_checkout": True}
+            return _save_and_return({"answer": "Opening checkout!", "products": [], "session_id": session_id, "open_checkout": True})
         if resolved:
             cart = cart_store.get(session_id, [])
             if cart:
@@ -804,9 +827,9 @@ Reply with ONLY the JSON, no explanation."""
                     result = place_order(req)
                     cart_store[session_id] = []
                     session_store[session_id]["resolved_address"] = None
-                    return {"answer": f"Order placed! Delivering to **{resolved.get('display_label','Home')}**: {resolved.get('full_address','')}. Thank you for shopping with ShopAI!", "products": [], "session_id": session_id, "cart": [], "cart_total": 0}
+                    return _save_and_return({"answer": f"Order placed! Delivering to **{resolved.get('display_label','Home')}**: {resolved.get('full_address','')}. Thank you for shopping with ShopAI!", "products": [], "session_id": session_id, "cart": [], "cart_total": 0})
                 except Exception as e:
-                    return {"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id}
+                    return _save_and_return({"answer": f"Could not place order: {str(e)}", "products": [], "session_id": session_id})
 
     # ── Size filter on existing products ──
     # Only triggers on explicit size words, skips if user is adding to cart
@@ -819,17 +842,17 @@ Reply with ONLY the JSON, no explanation."""
         filtered = [p for p in existing if size_word in p["name"].upper()]
         if filtered:
             session_store[session_id]["last_products"] = filtered
-            return {"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id}
+            return _save_and_return({"answer": llm_chat(f"Customer wants {size_word} size. Show these options naturally: {[p['name'] for p in filtered]}"), "products": filtered, "session_id": session_id})
     is_buy_intent = (llm_intent == "add_to_cart" or any(kw in query.lower() for kw in BUY_KEYWORDS)) and not is_checkout_only
     is_delivery_also = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     if is_buy_intent:
         if not session_store[session_id].get("logged_in", False) and is_delivery_also:
-            return {
+            return _save_and_return({
                 "answer": "Please login to continue with delivery and order processing! 🔐",
                 "products": session_store[session_id].get("last_products", []),
                 "session_id": session_id,
                 "requires_login": True
-            }
+            })
         last_products = session_store[session_id].get("last_products", [])
         if not last_products:
             last_products = products
@@ -837,11 +860,11 @@ Reply with ONLY the JSON, no explanation."""
         # ✅ FIX: if no usable last_products, fall back to products fetched this request
         if not last_products:
             if not products or products[0]["similarity"] < 0.3:
-                return {
+                return _save_and_return({
                     "answer": "Please search for a product first, then say add to cart! For example: i need tote bag",
                     "products": [],
                     "session_id": session_id
-                }
+                })
             last_products = products
         session_store[session_id]["last_products"] = products
 
@@ -867,13 +890,13 @@ Reply with ONLY the JSON, no explanation."""
         total = sum(i["price"] * i["qty"] for i in cart)
         history.append({"role": "human", "content": query})
         history.append({"role": "assistant", "content": f"Added {top['name']} to your cart!"})
-        return {
+        return _save_and_return({
             "answer": f"Added {top['name']} to your cart for ${top['price']}. Total: ${round(total, 2)}. Say deliver to my home or office address to place order with Cash on Delivery!",
             "products": last_products,
             "session_id": session_id,
             "cart": cart,
             "cart_total": round(total, 2)
-        }
+        })
 
     # ── Wishlist intent: handle numeric reply ──
     if session_store[session_id].get("wishlist_pending") and query.strip().isdigit():
@@ -885,41 +908,41 @@ Reply with ONLY the JSON, no explanation."""
                 wishlist_store[session_id] = []
             existing = next((i for i in wishlist_store[session_id] if i["sku"] == chosen["sku"]), None)
             if existing:
-                return {
+                return _save_and_return({
                     "answer": f"{chosen['name']} is already in your wishlist!",
                     "products": last_products,
                     "session_id": session_id
-                }
+                })
             wishlist_store[session_id].append({
                 "sku": chosen["sku"],
                 "name": chosen["name"],
                 "price": chosen["price"]
             })
             session_store[session_id]["wishlist_pending"] = False
-            return {
+            return _save_and_return({
                 "answer": f"Saved {chosen['name']} to your wishlist! Want to add more? Just say the number.",
                 "products": last_products,
                 "session_id": session_id,
                 "wishlist": wishlist_store[session_id]
-            }
+            })
 
     # ── Wishlist intent ──
     is_wishlist_intent = any(kw in query.lower() for kw in WISHLIST_KEYWORDS)
     if is_wishlist_intent:
         last_products = session_store[session_id].get("last_products", [])
         if not last_products:
-            return {
+            return _save_and_return({
                 "answer": "Please search for a product first, then I can save it to your wishlist!",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         session_store[session_id]["wishlist_pending"] = True
         product_list = "\n".join([f"{i+1}. {p['name']} — ${p['price']}" for i, p in enumerate(last_products)])
-        return {
+        return _save_and_return({
             "answer": f"Which product would you like to add to your wishlist?\n\n{product_list}\n\nJust reply with the number!",
             "products": last_products,
             "session_id": session_id
-        }
+        })
 
     # ── Similarity threshold ──
     # ── Tracking intent ──
@@ -928,7 +951,7 @@ Reply with ONLY the JSON, no explanation."""
         order_id = session_store[session_id].get("last_order_id")
         if not order_id:
             if not session_store[session_id].get("logged_in"):
-                return {"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True}
+                return _save_and_return({"answer": "Please login first to track your orders! 🔐", "products": [], "session_id": session_id, "requires_login": True})
             email = session_store[session_id].get("email")
             if email:
                 from mcp_client import mcp as _mcp
@@ -937,26 +960,26 @@ Reply with ONLY the JSON, no explanation."""
                 items = orders.get("items",[])
                 if items: order_id = items[0].get("increment_id")
             if not order_id:
-                return {"answer": "No orders found for your account.", "products": [], "session_id": session_id}
+                return _save_and_return({"answer": "No orders found for your account.", "products": [], "session_id": session_id})
         if result.get("error") or not result:
-            return {
+            return _save_and_return({
                 "answer": f"I couldn't find tracking info for order {order_id}. Please check your order number.",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         tracks = result.get("tracks", [])
         if not tracks:
-            return {
+            return _save_and_return({
                 "answer": f"Your order {order_id} is {result.get('order_status', 'being processed')}. No shipment has been created yet.",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         t = tracks[0]
-        return {
+        return _save_and_return({
             "answer": f"Your order {order_id} status: {result.get('order_status')}.\nCarrier: {t.get('carrier_title')}\nTracking Number: {t.get('tracking_number')}\nShipped on: {t.get('shipment_date', '')[:10]}",
             "products": [],
             "session_id": session_id
-        }
+        })
 
     # ── Order number in query ──
     import re
@@ -967,24 +990,24 @@ Reply with ONLY the JSON, no explanation."""
         from mcp_client import mcp
         result = mcp.get_tracking_info(order_id)
         if result.get("error") or not result:
-            return {
+            return _save_and_return({
                 "answer": f"I couldn't find order {order_id}. Please check your order number.",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         tracks = result.get("tracks", [])
         if not tracks:
-            return {
+            return _save_and_return({
                 "answer": f"Your order {order_id} is currently {result.get('order_status', 'being processed')}. No shipment created yet.",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         t = tracks[0]
-        return {
+        return _save_and_return({
             "answer": f"Your order {order_id} status: {result.get('order_status')}.\nCarrier: {t.get('carrier_title')}\nTracking Number: {t.get('tracking_number')}\nShipped on: {t.get('shipment_date', '')[:10]}",
             "products": [],
             "session_id": session_id
-        }
+        })
 
     # ── Order history intent ──
     is_order_history = any(kw in query.lower() for kw in ORDER_HISTORY_KEYWORDS)
@@ -994,21 +1017,21 @@ Reply with ONLY the JSON, no explanation."""
         result = mcp.get_customer_orders(email)
         orders = result.get("items", [])
         if not orders:
-            return {
+            return _save_and_return({
                 "answer": "I couldn't find any orders for your account.",
                 "products": [],
                 "session_id": session_id
-            }
+            })
         order_list = "\n".join([
             f"• Order {o['increment_id']} — {o['status']} — ${o['grand_total']}"
             for o in orders[:5]
         ])
         natural = aria_say(f"Customer asked for order history. They have {len(orders)} orders.", f"Orders: {order_list}. Tell them their orders naturally and offer to track any of them.")
-        return {
+        return _save_and_return({
             "answer": natural,
             "products": [],
             "session_id": session_id
-        }
+        })
 
     is_cancel = any(kw in query.lower() for kw in CANCEL_KEYWORDS)
     if is_cancel:
@@ -1017,11 +1040,11 @@ Reply with ONLY the JSON, no explanation."""
         order_match = re.search(r"\b0+\d+\b", query)
         order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
         if not order_id:
-            return {"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please provide your order number. Example: cancel order 000000004", "products": [], "session_id": session_id})
         result = mcp.cancel_order(order_id)
         if result and result.get("message") != "You do not have permission":
-            return {"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id}
-        return {"answer": "Could not cancel order " + order_id + ". It may already be shipped or completed.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Order " + order_id + " has been cancelled successfully.", "products": [], "session_id": session_id})
+        return _save_and_return({"answer": "Could not cancel order " + order_id + ". It may already be shipped or completed.", "products": [], "session_id": session_id})
 
     is_return = any(kw in query.lower() for kw in RETURN_KEYWORDS)
     if is_return:
@@ -1030,20 +1053,20 @@ Reply with ONLY the JSON, no explanation."""
         order_match = re.search(r"\b0+\d+\b", query)
         order_id = order_match.group() if order_match else session_store[session_id].get("last_order_id")
         if not order_id:
-            return {"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please provide your order number. Example: refund order 000000001", "products": [], "session_id": session_id})
         result = mcp.create_creditmemo(order_id)
         if result and not result.get("error"):
-            return {"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id}
-        return {"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Refund initiated for order " + order_id + ". You will receive your money back in 3-5 business days.", "products": [], "session_id": session_id})
+        return _save_and_return({"answer": "Could not process refund for order " + order_id + ". Please contact support.", "products": [], "session_id": session_id})
     is_policy = any(kw in query.lower() for kw in POLICY_KEYWORDS)
     is_review = any(kw in query.lower() for kw in REVIEW_KEYWORDS)
     if is_review:
         last_products = session_store[session_id].get("last_products", [])
         if not last_products:
-            return {"answer": "Please search for a product first, then I can help you review it.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Please search for a product first, then I can help you review it.", "products": [], "session_id": session_id})
         session_store[session_id]["awaiting_review"] = True
         top = last_products[0]
-        return {"answer": "Please rate " + top["name"] + " out of 5 and write your review. Reply like: 5 stars - Great product!", "products": last_products, "session_id": session_id}
+        return _save_and_return({"answer": "Please rate " + top["name"] + " out of 5 and write your review. Reply like: 5 stars - Great product!", "products": last_products, "session_id": session_id})
     if session_store[session_id].get("awaiting_review") and re.search(r"\d", query):
         from mcp_client import mcp
         rating_match = re.search(r"[1-5]", query)
@@ -1052,11 +1075,11 @@ Reply with ONLY the JSON, no explanation."""
         nickname = session_store[session_id].get("firstname", "Customer")
         result = mcp.submit_review(top.get("product_id", 1), rating, query, nickname)
         session_store[session_id]["awaiting_review"] = False
-        return {"answer": "Thank you for your " + str(rating) + " star review! Your feedback has been submitted.", "products": [], "session_id": session_id}
+        return _save_and_return({"answer": "Thank you for your " + str(rating) + " star review! Your feedback has been submitted.", "products": [], "session_id": session_id})
     if is_policy:
         from cms_router import answer_policy, PolicyRequest
         result = answer_policy(PolicyRequest(query=query))
-        return {"answer": result["title"] + ":\n" + result["answer"], "products": [], "session_id": session_id}
+        return _save_and_return({"answer": result["title"] + ":\n" + result["answer"], "products": [], "session_id": session_id})
     is_list_address = any(kw in query.lower() for kw in LIST_ADDRESS_KEYWORDS)
     if is_list_address:
         cid = session_store[session_id].get("customer_id", 0)
@@ -1068,19 +1091,19 @@ Reply with ONLY the JSON, no explanation."""
                 default_tag = " ⭐" if a["is_default"] else ""
                 lines.append(f"• **{a['display_label']}**{default_tag}: {a['full_address']}")
             addr_text = "\n".join(lines)
-            return {
+            return _save_and_return({
                 "answer": f"Your saved addresses:\n\n{addr_text}\n\nSay **'deliver to my [label]'** to use one!",
                 "products": [], "session_id": session_id
-            }
+            })
         except:
-            return {
+            return _save_and_return({
                 "answer": "You have no saved addresses yet. Click the 📍 button to add one!",
                 "products": [], "session_id": session_id
-            }
+            })
     is_add_address = any(kw in query.lower() for kw in ADD_ADDRESS_KEYWORDS)
     if is_add_address:
         session_store[session_id]["awaiting_address"] = True
-        return {"answer": "Please share your address like this:\nlabel: home\nstreet: 123 MG Road\ncity: Kochi\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id}
+        return _save_and_return({"answer": "Please share your address like this:\nlabel: home\nstreet: 123 MG Road\ncity: Kochi\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id})
     if any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS): session_store[session_id]["awaiting_address"] = False
     if session_store[session_id].get("awaiting_address"):
         try:
@@ -1089,9 +1112,9 @@ Reply with ONLY the JSON, no explanation."""
             cid = session_store[session_id].get("customer_id", 0)
             upsert_address(AddressUpsert(customer_id=cid, label=lines.get("label","home"), full_address=", ".join(filter(None,[lines.get("street"),lines.get("city"),lines.get("state"),lines.get("postal_code")])), street=lines.get("street"), city=lines.get("city"), state=lines.get("state"), postal_code=lines.get("postal_code")))
             session_store[session_id]["awaiting_address"] = False
-            return {"answer": aria_say("Customer just saved a new address successfully", "Confirm address saved and tell them they can now use it for delivery"), "products": [], "session_id": session_id}
+            return _save_and_return({"answer": aria_say("Customer just saved a new address successfully", "Confirm address saved and tell them they can now use it for delivery"), "products": [], "session_id": session_id})
         except Exception as e:
-            return {"answer": f"Could not save: {str(e)}", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": f"Could not save: {str(e)}", "products": [], "session_id": session_id})
     is_delete_address = any(kw in query.lower() for kw in DELETE_ADDRESS_KEYWORDS)
     if is_delete_address:
         cid = session_store[session_id].get("customer_id", 0)
@@ -1107,30 +1130,30 @@ Reply with ONLY the JSON, no explanation."""
                 break
         if matched_label:
             delete_address(cid, matched_label)
-            return {
+            return _save_and_return({
                 "answer": f"Your **{matched_label.title()}** address has been deleted.",
                 "products": [], "session_id": session_id
-            }
+            })
         else:
             label_list = ", ".join([f"'{a['display_label']}'" for a in addrs]) if addrs else "none saved"
-            return {
+            return _save_and_return({
                 "answer": f"Which address to delete? Your saved labels: {label_list}. Say e.g. *delete my home address*.",
                 "products": [], "session_id": session_id
-            }
+            })
     is_edit_address = any(kw in query.lower() for kw in EDIT_ADDRESS_KEYWORDS)
     if is_edit_address:
-        return {
+        return _save_and_return({
             "answer": "To edit an address, click the 📍 button in the header, select the address card and click **Edit**.",
             "products": [], "session_id": session_id,
             "open_address_manager": True
-        }
+        })
     # ── Auto Checkout intent ──
     is_checkout = any(kw in query.lower() for kw in CHECKOUT_KEYWORDS)
     is_deliver = any(kw in query.lower() for kw in DELIVERY_KEYWORDS)
     if is_checkout and not is_deliver:
         cart = cart_store.get(session_id, [])
         if not cart:
-            return {"answer": "Your cart is empty! Please add products first.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Your cart is empty! Please add products first.", "products": [], "session_id": session_id})
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT code, description, discount_type, discount_amount, min_order_amount FROM coupons WHERE is_active=true ORDER BY discount_amount DESC")
@@ -1142,16 +1165,16 @@ Reply with ONLY the JSON, no explanation."""
             coupon_list = "\n".join([f"{i+1}. **{c[0]}** — {c[1]}" for i,c in enumerate(coupons[:5])])
             session_store[session_id]["pending_checkout"] = True
             session_store[session_id]["available_coupons"] = [{"code":c[0],"description":c[1],"discount_type":c[2],"discount_amount":float(c[3]),"min_order":float(c[4])} for c in coupons]
-            return {"answer": f"Your cart total: **${round(total,2)}**\n\nAvailable offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to continue.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": f"Your cart total: **${round(total,2)}**\n\nAvailable offers:\n{coupon_list}\n\nSay **apply SAVE10** or **skip** to continue.", "products": [], "session_id": session_id})
         else:
-            return {"answer": "No offers available.", "products": [], "session_id": session_id, "open_checkout": True}
+            return _save_and_return({"answer": "No offers available.", "products": [], "session_id": session_id, "open_checkout": True})
 
     if is_checkout or is_deliver:
         if not session_store[session_id].get("logged_in", False):
-            return {"answer": "Please login first so I can place your order! Click the login button or say your email.", "products": [], "session_id": session_id, "requires_login": True}
+            return _save_and_return({"answer": "Please login first so I can place your order! Click the login button or say your email.", "products": [], "session_id": session_id, "requires_login": True})
         cart = cart_store.get(session_id, [])
         if not cart:
-            return {"answer": "Your cart is empty! Tell me what you want to buy first.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "Your cart is empty! Tell me what you want to buy first.", "products": [], "session_id": session_id})
         cid = session_store[session_id].get("customer_id", 1)
         # Detect address preference
         addr_label = "home"
@@ -1167,7 +1190,7 @@ Reply with ONLY the JSON, no explanation."""
         except:
             addr = None
         if not addr:
-            return {"answer": "I could not find your saved address. Please say: add address\nlabel: home\nstreet: your street\ncity: your city\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": "I could not find your saved address. Please say: add address\nlabel: home\nstreet: your street\ncity: your city\nstate: Kerala\npostal_code: 682001", "products": [], "session_id": session_id})
         # Place order via checkout router
         try:
             from checkout_router import place_order, CheckoutRequest
@@ -1196,17 +1219,17 @@ Reply with ONLY the JSON, no explanation."""
                 "cart_total": 0
             }
         except Exception as e:
-            return {"answer": f"Could not place order: {str(e)}. Please try again.", "products": [], "session_id": session_id}
+            return _save_and_return({"answer": f"Could not place order: {str(e)}. Please try again.", "products": [], "session_id": session_id})
 
     THRESHOLD = 0.3
     if llm_intent == "add_to_cart":
         pass
     elif not products or products[0]["similarity"] < THRESHOLD:
-        return {
+        return _save_and_return({
             "answer": "I'm sorry, I couldn't find any products matching your request in our catalog. Could you try describing what you're looking for differently? For example, try searching for jackets, hoodies, tees, or workout gear.",
             "products": [],
             "session_id": session_id
-        }
+        })
 
     # ── Build prompt with history ──
     context = "\n".join([f"- {r['name']} (SKU: {r['sku']}, Price: ${r['price']:.2f})" for r in products])
@@ -1230,11 +1253,11 @@ Assistant:"""
     history.append({"role": "human", "content": query})
     history.append({"role": "assistant", "content": answer})
 
-    return {
+    return _save_and_return({
         "answer": answer,
         "products": products,
         "session_id": session_id
-    }
+    })
 
 # ─── PRODUCT ENDPOINTS ───
 @app.get("/products")
@@ -1304,6 +1327,24 @@ def get_product_sales(date_range: str = "this month"):
     return result if result else {"error": "Could not fetch sales"}
 
 # ─── CART ENDPOINTS ───
+@app.get("/chat-history/{customer_id}")
+def get_chat_history(customer_id: int, limit: int = 50):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT session_id, role, message, created_at
+            FROM chat_history
+            WHERE customer_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        """, (customer_id, limit))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return {"history": [{"session_id": r[0], "role": r[1], "message": r[2], "time": str(r[3])} for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/cart/add")
 def cart_add(item: CartItem):
     sid = item.session_id
