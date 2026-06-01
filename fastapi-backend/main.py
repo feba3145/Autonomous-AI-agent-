@@ -108,6 +108,67 @@ and recommend the most relevant products from the context.
 If asked to buy, add to cart or place order, process it immediately."""
 
 # ─── SESSION CLEANUP ───
+def get_personalized_recommendations(customer_id: int, limit: int = 5):
+    """Get product recommendations based on customer chat history."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Get products customer interacted with from chat history
+        cur.execute("""
+            SELECT message FROM chat_history
+            WHERE customer_id = %s AND role = 'assistant'
+            ORDER BY created_at DESC LIMIT 20
+        """, (customer_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        if not rows:
+            return []
+        # Extract product names from assistant messages
+        all_text = " ".join([r[0] for r in rows])
+        # Ask LLM to extract product categories/types customer liked
+        extract_prompt = f"""From this shopping assistant conversation history, extract the product types/categories the customer was interested in.
+Return ONLY a comma-separated list of product keywords. Max 5 keywords.
+Example: "watches, analog, duffle bag"
+
+History:
+{all_text[:2000]}
+
+Keywords:"""
+        keywords_raw = llm_chat(extract_prompt)
+        keywords = [k.strip() for k in keywords_raw.split(",") if k.strip()][:5]
+        if not keywords:
+            return []
+        print(f"[RECOMMEND] Keywords for customer {customer_id}: {keywords}")
+        # Search products using these keywords
+        recommended = []
+        seen_skus = set()
+        conn2 = get_db()
+        cur2 = conn2.cursor()
+        for kw in keywords:
+            embedding = model.encode(kw).tolist()
+            cur2.execute("""
+                SELECT sku, name, price, image,
+                1 - (embedding <=> %s::vector) AS similarity
+                FROM products
+                WHERE 1 - (embedding <=> %s::vector) > 0.3
+                ORDER BY similarity DESC LIMIT 3
+            """, (embedding, embedding))
+            for row in cur2.fetchall():
+                if row[0] not in seen_skus:
+                    seen_skus.add(row[0])
+                    recommended.append({
+                        "sku": row[0], "name": row[1],
+                        "price": float(row[2]), "image": row[3],
+                        "similarity": float(row[4])
+                    })
+        cur2.close(); conn2.close()
+        # Sort by similarity and return top N
+        recommended.sort(key=lambda x: x["similarity"], reverse=True)
+        return recommended[:limit]
+    except Exception as e:
+        print(f"[RECOMMEND ERROR] {e}")
+        return []
+
 def summarize_and_save_session(session_id: str, customer_id: int):
     """Summarize a session and save to DB. Called when session goes idle."""
     try:
@@ -826,6 +887,18 @@ Reply with ONLY the JSON, no explanation."""
             desc = _re3.sub('<[^<]+?>',' ',row[0] or '').strip() if row and row[0] else "No description available."
             session_store[session_id]["last_products"] = [best]
             return _save_and_return({"answer": f"**{best['name']}** — ${best['price']}\n\n{desc}", "products": [best], "session_id": session_id})
+    # ── Personalized recommendations intent ──
+    _rec_keywords = ["recommend", "suggestion", "what should i buy", "what do you suggest", "based on my history", "what did i like", "personalized", "for me", "what would i like", "what suits me"]
+    if any(kw in query.lower() for kw in _rec_keywords):
+        _cid_rec = session_store[session_id].get("customer_id", 0)
+        if _cid_rec:
+            rec_products = get_personalized_recommendations(_cid_rec)
+            if rec_products:
+                session_store[session_id]["last_products"] = rec_products
+                answer = llm_chat(f"Based on this customer browsing history, recommend these products naturally and explain why they might like them: {[p['name'] for p in rec_products]}", history=history)
+                return _save_and_return({"answer": answer, "products": rec_products, "session_id": session_id})
+        return _save_and_return({"answer": "Please login so I can give you personalized recommendations! 🔐", "products": [], "session_id": session_id})
+
     # ── Store categories intent ──
     if any(kw in query.lower() for kw in ["categories","what do you sell","what categories","what products","store have","can i buy","do you sell","what can i","available products"]):
         conn_cat = get_db()
