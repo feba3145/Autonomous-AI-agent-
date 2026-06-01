@@ -1369,7 +1369,7 @@ Reply with ONLY the JSON, no explanation."""
         except Exception as e:
             return _save_and_return({"answer": f"Could not place order: {str(e)}. Please try again.", "products": [], "session_id": session_id})
 
-    THRESHOLD = 0.3
+    THRESHOLD = 0.45
     if llm_intent == "add_to_cart":
         pass
     elif llm_intent == "other" and history:
@@ -1378,12 +1378,16 @@ Reply with ONLY the JSON, no explanation."""
         history.append({"role": "human", "content": query})
         history.append({"role": "assistant", "content": answer})
         return _save_and_return({"answer": answer, "products": session_store[session_id].get("last_products", []), "session_id": session_id})
-    elif not products or products[0]["similarity"] < THRESHOLD:
-        return _save_and_return({
-            "answer": "I'm sorry, I couldn't find any products matching your request in our catalog. Could you try describing what you're looking for differently? For example, try searching for jackets, hoodies, tees, or workout gear.",
-            "products": [],
-            "session_id": session_id
-        })
+    elif not products or products[0]["similarity"] < 0.35:
+        # Nothing close enough — say not available
+        _na_answer = llm_chat(f"""The customer asked for "{query}" but we don't have this product in our catalog.
+Politely tell them this specific product is not available.
+Suggest they try: bags, watches, jackets, hoodies, tees, shorts, joggers, backpacks, sports gear.
+Keep it short and friendly. Do NOT make up products.""", history=history)
+        return _save_and_return({"answer": _na_answer, "products": [], "session_id": session_id})
+    elif products[0]["similarity"] < THRESHOLD:
+        # Partial match — show products but mention they may not be exact
+        session_store[session_id]["last_products"] = products
 
     # ── Build prompt with history ──
     context = "\n".join([f"- {r['name']} (SKU: {r['sku']}, Price: ${r['price']:.2f})" for r in products])
