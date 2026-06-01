@@ -108,6 +108,48 @@ and recommend the most relevant products from the context.
 If asked to buy, add to cart or place order, process it immediately."""
 
 # ─── SESSION CLEANUP ───
+def summarize_and_save_session(session_id: str, customer_id: int):
+    """Summarize a session and save to DB. Called when session goes idle."""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        # Get all messages for this session
+        cur.execute("""
+            SELECT role, message FROM chat_history
+            WHERE session_id = %s
+            ORDER BY created_at ASC
+        """, (session_id,))
+        rows = cur.fetchall()
+        if len(rows) < 2:
+            cur.close(); conn.close()
+            return
+        # Check if summary already exists
+        cur.execute("SELECT id FROM session_summaries WHERE session_id = %s", (session_id,))
+        if cur.fetchone():
+            cur.close(); conn.close()
+            return
+        # Build conversation text
+        convo = "\n".join([f"{r[0]}: {r[1]}" for r in rows])
+        # Ask LLM to summarize
+        summary = llm_chat(f"""Summarize this shopping conversation in 2-3 sentences.
+Focus on: what products customer looked at, what they liked/disliked, what they bought, delivery address used.
+Be specific with product names and prices.
+
+Conversation:
+{convo}
+
+Summary:""")
+        # Save summary
+        cur.execute("""
+            INSERT INTO session_summaries (customer_id, session_id, summary)
+            VALUES (%s, %s, %s)
+        """, (customer_id, session_id, summary))
+        conn.commit()
+        cur.close(); conn.close()
+        print(f"[SUMMARY] Saved for session {session_id}: {summary[:100]}")
+    except Exception as e:
+        print(f"[SUMMARY ERROR] {e}")
+
 def save_chat_message(session_id: str, role: str, message: str, customer_id: int = 0):
     try:
         conn = get_db()
@@ -126,6 +168,11 @@ def cleanup_sessions():
     while True:
         time.sleep(300)
         now = time.time()
+        for sid, data in list(session_store.items()):
+            idle_time = now - data.get("last_used", now)
+            cid = data.get("customer_id", 0)
+            if idle_time > 600 and cid:
+                summarize_and_save_session(sid, cid)
         expired = [sid for sid, data in session_store.items()
                    if now - data["last_used"] > SESSION_TIMEOUT]
         for sid in expired:
@@ -159,9 +206,17 @@ Aria:"""
     except:
         return data
 
-def llm_chat(prompt):
+def llm_chat(prompt, history=None):
     try:
-        r = GROQ.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}])
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            for h in history[-10:]:
+                role = h.get("role", "user")
+                if role == "human":
+                    role = "user"
+                messages.append({"role": role, "content": h.get("content", "")})
+        messages.append({"role": "user", "content": prompt})
+        r = GROQ.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages)
         return r.choices[0].message.content
     except Exception as e:
         print(f"[GROQ ERROR] {e}")
@@ -408,8 +463,28 @@ def rag_chat(payload: ChatRequest):
         }
     session_store[session_id]["last_used"] = time.time()
     history = session_store[session_id].get("history", [])
-    print(f"[RAG_START] query={query}")
     _cid = session_store.get(session_id, {}).get("customer_id", 0)
+    # ── Load summary + last 10 messages from DB into context if history is empty ──
+    if not history and _cid:
+        try:
+            _conn_h = get_db()
+            _cur_h = _conn_h.cursor()
+            _cur_h.execute("SELECT summary FROM session_summaries WHERE customer_id = %s ORDER BY created_at DESC LIMIT 1", (_cid,))
+            _summary_row = _cur_h.fetchone()
+            _summary = _summary_row[0] if _summary_row else None
+            _cur_h.execute("SELECT role, message FROM chat_history WHERE customer_id = %s AND session_id != %s ORDER BY created_at DESC LIMIT 10", (_cid, session_id))
+            _rows = _cur_h.fetchall()
+            _cur_h.close(); _conn_h.close()
+            if _summary:
+                history.append({"role": "assistant", "content": f"[Previous session summary: {_summary}]"})
+                print(f"[CONTEXT] Summary: {_summary[:80]}")
+            for _role, _msg in reversed(_rows):
+                history.append({"role": "human" if _role == "user" else "assistant", "content": _msg})
+            session_store[session_id]["history"] = history
+            print(f"[CONTEXT] Loaded {len(_rows)} past messages for customer {_cid}")
+        except Exception as _he:
+            print(f"[CONTEXT ERROR] {_he}")
+    print(f"[RAG_START] query={query}")
     save_chat_message(session_id, "user", query, _cid)
     
   
@@ -1224,6 +1299,12 @@ Reply with ONLY the JSON, no explanation."""
     THRESHOLD = 0.3
     if llm_intent == "add_to_cart":
         pass
+    elif llm_intent == "other" and history:
+        # ── No product search needed — let LLM answer from history context ──
+        answer = llm_chat(query, history=history)
+        history.append({"role": "human", "content": query})
+        history.append({"role": "assistant", "content": answer})
+        return _save_and_return({"answer": answer, "products": session_store[session_id].get("last_products", []), "session_id": session_id})
     elif not products or products[0]["similarity"] < THRESHOLD:
         return _save_and_return({
             "answer": "I'm sorry, I couldn't find any products matching your request in our catalog. Could you try describing what you're looking for differently? For example, try searching for jackets, hoodies, tees, or workout gear.",
@@ -1248,7 +1329,7 @@ Previous Conversation:
 Customer: {query}
 Assistant:"""
 
-    answer = llm_chat(prompt)
+    answer = llm_chat(prompt, history=history)
 
     history.append({"role": "human", "content": query})
     history.append({"role": "assistant", "content": answer})
