@@ -1485,6 +1485,88 @@ def get_product_sales(date_range: str = "this month"):
     return result if result else {"error": "Could not fetch sales"}
 
 # ─── CART ENDPOINTS ───
+@app.get("/admin")
+def admin_page():
+    from fastapi.responses import FileResponse
+    import os
+    admin_path = os.path.join(os.path.dirname(__file__), "../admin.html")
+    return FileResponse(admin_path)
+
+@app.get("/admin/stats")
+def admin_stats(token: str = ""):
+    if token != "shopai_admin_2024":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM chat_history")
+        total_messages = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(DISTINCT customer_id) FROM chat_history WHERE customer_id > 0")
+        total_customers = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(DISTINCT session_id) FROM chat_history")
+        total_sessions = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM chat_history WHERE created_at > NOW() - INTERVAL '24 hours'")
+        messages_today = cur.fetchone()[0]
+        cur.execute("""
+            SELECT customer_id, COUNT(*) as msg_count, MAX(created_at) as last_active
+            FROM chat_history WHERE customer_id > 0
+            GROUP BY customer_id ORDER BY last_active DESC LIMIT 10
+        """)
+        customers = [{"customer_id": r[0], "messages": r[1], "last_active": str(r[2])} for r in cur.fetchall()]
+        cur.execute("""
+            SELECT message, COUNT(*) as cnt FROM chat_history
+            WHERE role = 'user' AND created_at > NOW() - INTERVAL '7 days'
+            GROUP BY message ORDER BY cnt DESC LIMIT 10
+        """)
+        top_queries = [{"query": r[0], "count": r[1]} for r in cur.fetchall()]
+        cur.execute("""
+            SELECT session_id, customer_id, COUNT(*) as msgs,
+            MIN(created_at) as started, MAX(created_at) as ended
+            FROM chat_history GROUP BY session_id, customer_id
+            ORDER BY ended DESC LIMIT 20
+        """)
+        sessions = [{"session_id": r[0], "customer_id": r[1], "messages": r[2],
+                     "started": str(r[3]), "ended": str(r[4])} for r in cur.fetchall()]
+        cur.execute("""
+            SELECT DATE(created_at), COUNT(*) FROM chat_history
+            WHERE created_at > NOW() - INTERVAL '7 days'
+            GROUP BY DATE(created_at) ORDER BY DATE(created_at)
+        """)
+        daily_msgs = [{"date": str(r[0]), "count": r[1]} for r in cur.fetchall()]
+        cur.close(); conn.close()
+        return {
+            "total_messages": total_messages,
+            "total_customers": total_customers,
+            "total_sessions": total_sessions,
+            "messages_today": messages_today,
+            "top_customers": customers,
+            "top_queries": top_queries,
+            "recent_sessions": sessions,
+            "daily_messages": daily_msgs
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/admin/chat/{customer_id}")
+def admin_customer_chat(customer_id: int, token: str = ""):
+    if token != "shopai_admin_2024":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT session_id, role, message, created_at
+            FROM chat_history WHERE customer_id = %s
+            ORDER BY created_at ASC
+        """, (customer_id,))
+        rows = cur.fetchall()
+        cur.close(); conn.close()
+        return {"history": [{"session_id": r[0], "role": r[1], "message": r[2], "time": str(r[3])} for r in rows]}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/chat-history/{customer_id}")
 def get_chat_history(customer_id: int, limit: int = 50):
     try:
