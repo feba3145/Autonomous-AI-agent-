@@ -105,6 +105,8 @@ tr:hover td{background:#1e1e2e;}
       <div class="stat-card green"><div class="stat-label">Messages Today</div><div class="stat-value" id="s-today-msgs">—</div><div class="stat-sub">Last 24 hours</div></div>
       <div class="stat-card purple"><div class="stat-label">Customers</div><div class="stat-value" id="s-customers">—</div><div class="stat-sub">Logged-in users</div></div>
       <div class="stat-card red"><div class="stat-label">Sessions</div><div class="stat-value" id="s-sessions">—</div><div class="stat-sub">All conversations</div></div>
+      <div class="stat-card"><div class="stat-label">Total Orders</div><div class="stat-value" id="s-orders">—</div><div class="stat-sub">From Magento</div></div>
+      <div class="stat-card green"><div class="stat-label">Total Revenue</div><div class="stat-value" id="s-revenue" style="font-size:24px">—</div><div class="stat-sub">All orders</div></div>
     </div>
     <div class="section-grid">
       <div class="panel">
@@ -121,6 +123,16 @@ tr:hover td{background:#1e1e2e;}
       <div class="panel-body">
         <table><thead><tr><th>Customer ID</th><th>Messages</th><th>Last Active</th><th>Action</th></tr></thead>
         <tbody id="customers-table"></tbody></table>
+      </div>
+    </div>
+    <div class="section-grid">
+      <div class="panel">
+        <div class="panel-header"><h3>Top Ordered Products</h3></div>
+        <div class="panel-body"><div class="query-list" id="top-products"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><h3>Products Not Found</h3><span style="font-size:11px;color:var(--red)">Add these to your catalog</span></div>
+        <div class="panel-body"><div class="query-list" id="not-found-list"></div></div>
       </div>
     </div>
     <div class="panel section-full">
@@ -183,6 +195,13 @@ async function loadStats(){
     cTable.innerHTML=d.top_customers.map(c=>`<tr class="customer-row" onclick="viewChat(${c.customer_id})"><td><span class="badge badge-green">CID #${c.customer_id}</span></td><td>${c.messages} messages</td><td>${new Date(c.last_active).toLocaleString()}</td><td><span class="badge badge-orange">View Chat</span></td></tr>`).join('');
     const sTable=document.getElementById('sessions-table');
     sTable.innerHTML=d.recent_sessions.map(s=>`<tr><td style="font-family:'Space Mono',monospace;font-size:11px;color:var(--muted)">${s.session_id}</td><td>${s.customer_id>0?`<span class="badge badge-green">CID #${s.customer_id}</span>`:'<span style="color:var(--muted)">Guest</span>'}</td><td>${s.messages}</td><td style="font-size:12px;color:var(--muted)">${new Date(s.started).toLocaleString()}</td><td style="font-size:12px;color:var(--muted)">${new Date(s.ended).toLocaleString()}</td></tr>`).join('');
+    const ms=d.magento_stats||{};
+    document.getElementById('s-orders').textContent=ms.order_count||0;
+    document.getElementById('s-revenue').textContent='$'+(ms.revenue||0).toLocaleString();
+    const tpList=document.getElementById('top-products');
+    tpList.innerHTML=ms.top_products&&ms.top_products.length?ms.top_products.map(p=>`<div class="query-item"><span class="query-text">${p.name.substring(0,40)}</span><span class="query-count">x${p.qty}</span></div>`).join(''):'<div style="color:var(--muted);font-size:13px">No orders yet</div>';
+    const nfList=document.getElementById('not-found-list');
+    nfList.innerHTML=d.not_found_queries&&d.not_found_queries.length?d.not_found_queries.map(q=>`<div class="query-item"><span class="query-text">${q.query.substring(0,45)}</span><span class="query-count" style="background:rgba(231,76,60,0.1);color:var(--red)">x${q.count}</span></div>`).join(''):'<div style="color:var(--muted);font-size:13px">No missing products yet</div>';
   }catch(e){console.error(e);}
 }
 async function viewChat(customerId){

@@ -211,6 +211,42 @@ Summary:""")
     except Exception as e:
         print(f"[SUMMARY ERROR] {e}")
 
+def send_order_alert(customer_email: str, items: list, total: float, address: str):
+    """Send email alert to admin when order is placed."""
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import os
+        admin_email = os.environ.get("ADMIN_EMAIL", "febatheresa2@gmail.com")
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASS", "")
+        if not smtp_user or not smtp_pass:
+            print("[EMAIL] SMTP credentials not set — skipping alert")
+            return
+        items_text = "\n".join([f"  - {i.get('name','?')} x{i.get('qty',1)} @ ${i.get('price',0)}" for i in items])
+        body = f"""New Order Placed on ShopAI!
+
+Customer: {customer_email}
+Delivery: {address}
+Items:
+{items_text}
+
+Total: ${total:.2f}
+
+— ShopAI Admin Alert"""
+        msg = MIMEMultipart()
+        msg['From'] = smtp_user
+        msg['To'] = admin_email
+        msg['Subject'] = f"New ShopAI Order — ${total:.2f}"
+        msg.attach(MIMEText(body, 'plain'))
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(smtp_user, smtp_pass)
+            server.send_message(msg)
+        print(f"[EMAIL] Order alert sent to {admin_email}")
+    except Exception as e:
+        print(f"[EMAIL ERROR] {e}")
+
 def save_chat_message(session_id: str, role: str, message: str, customer_id: int = 0):
     try:
         conn = get_db()
@@ -973,6 +1009,10 @@ Reply with ONLY the JSON, no explanation."""
                         country_id="IN"
                     )
                     result = place_order(req)
+                    _order_items = cart_store.get(session_id, [])
+                    _order_total = sum(i["price"]*i["qty"] for i in _order_items)
+                    _cust_email = session_store[session_id].get("email", "unknown")
+                    send_order_alert(_cust_email, _order_items, _order_total, resolved.get("full_address",""))
                     cart_store[session_id] = []
                     session_store[session_id]["resolved_address"] = None
                     return _save_and_return({"answer": f"Order placed! Delivering to **{resolved.get('display_label','Home')}**: {resolved.get('full_address','')}. Thank you for shopping with ShopAI!", "products": [], "session_id": session_id, "cart": [], "cart_total": 0})
@@ -1358,6 +1398,11 @@ Reply with ONLY the JSON, no explanation."""
                 country_id="IN"
             )
             result = place_order(req)
+            _o_items = cart_store.get(session_id, [])
+            _o_total = sum(i["price"]*i["qty"] for i in _o_items)
+            _o_email = session_store[session_id].get("email", "unknown")
+            _o_addr = session_store[session_id].get("resolved_address", {})
+            send_order_alert(_o_email, _o_items, _o_total, _o_addr.get("full_address","") if isinstance(_o_addr, dict) else "")
             cart_store[session_id] = []
             items_text = ", ".join([i["name"] for i in result["items"]])
             return {
@@ -1379,7 +1424,13 @@ Reply with ONLY the JSON, no explanation."""
         history.append({"role": "assistant", "content": answer})
         return _save_and_return({"answer": answer, "products": session_store[session_id].get("last_products", []), "session_id": session_id})
     elif not products or products[0]["similarity"] < 0.35:
-        # Nothing close enough — say not available
+        # Track not-found query
+        try:
+            _nf_conn = get_db(); _nf_cur = _nf_conn.cursor()
+            _nf_cur.execute("INSERT INTO search_not_found (customer_id, session_id, query) VALUES (%s, %s, %s)",
+                (_cid or 0, session_id, query))
+            _nf_conn.commit(); _nf_cur.close(); _nf_conn.close()
+        except: pass
         _na_answer = llm_chat(f"""The customer asked for "{query}" but we don't have this product in our catalog.
 Politely tell them this specific product is not available.
 Suggest they try: bags, watches, jackets, hoodies, tees, shorts, joggers, backpacks, sports gear.
@@ -1534,7 +1585,27 @@ def admin_stats(token: str = ""):
             GROUP BY DATE(created_at) ORDER BY DATE(created_at)
         """)
         daily_msgs = [{"date": str(r[0]), "count": r[1]} for r in cur.fetchall()]
+        cur.execute("SELECT query, COUNT(*) as cnt FROM search_not_found GROUP BY query ORDER BY cnt DESC LIMIT 10")
+        not_found = [{"query": r[0], "count": r[1]} for r in cur.fetchall()]
         cur.close(); conn.close()
+        magento_stats = {"order_count": 0, "revenue": 0, "top_products": []}
+        try:
+            import requests as _req
+            _admin_token = mcp.get_token()
+            _r = _req.get(f"{mcp.base_url}/orders?searchCriteria[pageSize]=100&searchCriteria[sortOrders][0][field]=created_at&searchCriteria[sortOrders][0][direction]=DESC",
+                headers={"Authorization": f"Bearer {_admin_token}"}, verify=False)
+            if _r.status_code == 200:
+                _orders = _r.json().get("items", [])
+                magento_stats["order_count"] = len(_orders)
+                magento_stats["revenue"] = round(sum(float(o.get("grand_total", 0)) for o in _orders), 2)
+                _prod_counts = {}
+                for o in _orders:
+                    for item in o.get("items", []):
+                        name = item.get("name", "?")
+                        _prod_counts[name] = _prod_counts.get(name, 0) + int(item.get("qty_ordered", 1))
+                magento_stats["top_products"] = sorted([{"name": k, "qty": v} for k, v in _prod_counts.items()], key=lambda x: -x["qty"])[:5]
+        except Exception as _me:
+            print(f"[MAGENTO STATS ERROR] {_me}")
         return {
             "total_messages": total_messages,
             "total_customers": total_customers,
@@ -1543,7 +1614,9 @@ def admin_stats(token: str = ""):
             "top_customers": customers,
             "top_queries": top_queries,
             "recent_sessions": sessions,
-            "daily_messages": daily_msgs
+            "daily_messages": daily_msgs,
+            "not_found_queries": not_found,
+            "magento_stats": magento_stats
         }
     except Exception as e:
         return {"error": str(e)}
