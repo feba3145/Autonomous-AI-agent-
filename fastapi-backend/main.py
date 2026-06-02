@@ -822,9 +822,8 @@ is_ref=false examples: completely new product search"""
                 if _sf: _filtered = _sf
             if _filtered and len(_filtered) < len(_last_prods):
                 session_store[session_id]["last_products"] = _filtered
-                _ans = llm_chat(f"Customer wanted: {query}. Show these naturally: {[p['name'] for p in _filtered]}", history=history)
+                _ans = llm_chat(f"The customer wanted: {query}. These products ARE available and match their request: {[(p['name'], '$'+str(p['price'])) for p in _filtered]}. Present them positively and ask if they want to add to cart.", history=history)
                 return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
-            return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
 
     is_delivery_intent = llm_intent in ("deliver", "add_and_deliver")
     is_also_buy = llm_intent == "add_and_deliver"
