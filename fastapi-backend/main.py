@@ -683,37 +683,6 @@ def rag_chat(payload: ChatRequest):
                 "requires_login": True
             })
 
-    # ── Filter from existing products if user refers to current list ──
-    _ref_words = ["the one", "this one", "that one", "medium size", "small size", "large size", "xl size", "xs size", "the medium", "the small", "the large", "the blue", "the red", "the black", "the white", "the green", "previous", "that jacket", "that bag", "that watch", "that shirt"]
-    _last_prods = session_store[session_id].get("last_products", [])
-    if any(w in query.lower() for w in _ref_words) and _last_prods and llm_intent != "add_to_cart":
-        import re as _re_ref
-        # Extract size/color from query and filter last_products directly
-        _size_map = {"xs":"XS","s":"S-","small":"S-","m":"M-","medium":"M-","l":"L-","large":"L-","xl":"XL","xxl":"XXL"}
-        _color_words = ["blue","red","black","white","green","gray","grey","pink","yellow","orange","purple","brown"]
-        _q_lower = query.lower()
-        _filtered = list(_last_prods)
-        # Filter by color
-        for _col in _color_words:
-            if _col in _q_lower:
-                _col_filtered = [p for p in _filtered if _col.upper() in p["name"].upper() or _col.capitalize() in p["name"]]
-                if _col_filtered:
-                    _filtered = _col_filtered
-                break
-        # Filter by size
-        for _sz_word, _sz_code in _size_map.items():
-            if _re_ref.search(r"" + _sz_word + r"", _q_lower):
-                _sz_filtered = [p for p in _filtered if f"-{_sz_code}" in p["name"] or p["name"].upper().endswith(_sz_code)]
-                if _sz_filtered:
-                    _filtered = _sz_filtered
-                    break
-        print(f"[REF FILTER] query={query} | last={len(_last_prods)} | filtered={len(_filtered)}")
-        if _filtered and len(_filtered) < len(_last_prods):
-            session_store[session_id]["last_products"] = _filtered
-            _ans = llm_chat(f"Show these products naturally, customer wanted {query}: {[p['name'] for p in _filtered]}", history=history)
-            return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
-
-    # ── RAG search ──
     try:
         _ir_resp = llm_chat(f"What product is the user looking for? Query: '{query}'. Reply with ONLY the product category (e.g. bag, jacket, shoes, tshirt). One or two words max. No explanation.")
         interpret_res = type("R", (), {"json": lambda self: {"response": _ir_resp}})()
@@ -805,8 +774,10 @@ Return ONLY a JSON object:
 
 Use "add_and_deliver" when user wants both add to cart AND deliver in one message.
 Match product by name from the list above.
-IMPORTANT: "I need", "I want", "show me", "give me" = search NOT add_to_cart.
-Only use add_to_cart for: add, buy, purchase, put in cart, order."""
+CRITICAL RULES:
+- "need", "want", "show", "give me", "the one", "that one", "medium size", "previous" = ALWAYS "search"
+- add_to_cart ONLY for: "add", "buy", "purchase", "put in cart", "order", "take this"
+- When in doubt, use search"""
 
     try:
         _early_raw = llm_chat(_early_intent_prompt).strip()
@@ -821,6 +792,7 @@ Only use add_to_cart for: add, buy, purchase, put in cart, order."""
     print(f"[EARLY INTENT] {llm_intent} | index={llm_index} | address={llm_address_label}")
 
     # ── Filter from existing products if user refers to current list ──
+    import re as _re_ref
     import re as _re_ref
     _ref_words = ["the one", "this one", "that one", "medium size", "small size", "large size", "xl size", "xs size", "the medium", "the small", "the large", "the blue", "the red", "the black", "the white", "the green", "previous", "that jacket", "that bag", "that watch", "that shirt"]
     _last_prods = session_store[session_id].get("last_products", [])
@@ -994,7 +966,7 @@ Reply with ONLY the JSON, no explanation."""
         return _save_and_return({"answer": "Please login so I can give you personalized recommendations! 🔐", "products": [], "session_id": session_id})
 
     # ── Store categories intent ──
-    if any(kw in query.lower() for kw in ["categories","what do you sell","what categories","what products","store have","can i buy","do you sell","what can i","available products"]):
+    if any(kw in query.lower() for kw in ["categories","what do you sell","what categories","what products","store have","can i buy","do you sell","what can i","available products","what all product","all product","all products","what product","products do you","you have","what you have","what items","all items"]):
         conn_cat = get_db()
         cur_cat = conn_cat.cursor()
         cur_cat.execute("SELECT name, icon, product_count FROM product_categories WHERE is_active=true ORDER BY product_count DESC")
