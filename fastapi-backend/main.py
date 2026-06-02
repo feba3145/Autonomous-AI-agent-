@@ -790,31 +790,40 @@ CRITICAL RULES:
     llm_index = int(_early_data.get("product_index", 0))
     llm_address_label = _early_data.get("address_label", "").strip().lower()
     print(f"[EARLY INTENT] {llm_intent} | index={llm_index} | address={llm_address_label}")
-
-    # ── Filter from existing products if user refers to current list ──
-    import re as _re_ref
-    import re as _re_ref
-    _ref_words = ["the one", "this one", "that one", "medium size", "small size", "large size", "xl size", "xs size", "the medium", "the small", "the large", "the blue", "the red", "the black", "the white", "the green", "previous", "that jacket", "that bag", "that watch", "that shirt"]
+    # ── Filter from existing products if user refers to current list (LLM-driven) ──
     _last_prods = session_store[session_id].get("last_products", [])
-    if any(w in query.lower() for w in _ref_words) and _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver"):
-        _size_map = {"xs":"XS","small":"S-","medium":"M-","large":"L-","xl":"XL","xxl":"XXL"}
-        _color_words = ["blue","red","black","white","green","gray","grey","pink","yellow","orange","purple","brown"]
-        _q_lower = query.lower()
-        _filtered = list(_last_prods)
-        for _col in _color_words:
-            if _col in _q_lower:
-                _col_f = [p for p in _filtered if _col.upper() in p["name"].upper()]
-                if _col_f: _filtered = _col_f
-                break
-        for _sz_word, _sz_code in _size_map.items():
-            if _re_ref.search(r"\b" + _sz_word + r"\b", _q_lower):
-                _sz_f = [p for p in _filtered if f"-{_sz_code}" in p["name"]]
-                if _sz_f: _filtered = _sz_f
-                break
-        print(f"[REF FILTER] last={len(_last_prods)} filtered={len(_filtered)}")
-        if _filtered and len(_filtered) < len(_last_prods):
-            session_store[session_id]["last_products"] = _filtered
-            _ans = llm_chat(f"Customer wanted: {query}. Show these naturally: {[p['name'] for p in _filtered]}", history=history)
+    if _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver"):
+        import json as _jf, re as _re_ref
+        _filter_prompt = f"""You are a shopping assistant. The customer is looking at these products:
+{[p["name"] for p in _last_prods]}
+
+Customer said: "{query}"
+
+Is the customer referring to one of the products above and trying to filter by size/color?
+Reply ONLY with JSON: {{"is_ref": true or false, "color": "blue" or null, "size": "M" or null}}
+is_ref=true examples: "the medium one", "blue one", "that jacket", "previous one", "i told earlier", "you showed", "that blue one", "in medium size"
+is_ref=false examples: completely new product search"""
+        try:
+            _fraw = llm_chat(_filter_prompt).strip()
+            _fmatch = _re_ref.search(r'{.*}', _fraw, _re_ref.DOTALL)
+            _fdata = _jf.loads(_fmatch.group()) if _fmatch else {}
+        except:
+            _fdata = {}
+        print(f"[REF FILTER] is_ref={_fdata.get('is_ref')} color={_fdata.get('color')} size={_fdata.get('size')}")
+        if _fdata.get("is_ref"):
+            _filtered = list(_last_prods)
+            if _fdata.get("color"):
+                _col = _fdata["color"].upper()
+                _cf = [p for p in _filtered if _col in p["name"].upper()]
+                if _cf: _filtered = _cf
+            if _fdata.get("size"):
+                _sz = _fdata["size"].upper()
+                _sf = [p for p in _filtered if f"-{_sz}-" in p["name"].upper() or p["name"].upper().endswith(f"-{_sz}")]
+                if _sf: _filtered = _sf
+            if _filtered and len(_filtered) < len(_last_prods):
+                session_store[session_id]["last_products"] = _filtered
+                _ans = llm_chat(f"Customer wanted: {query}. Show these naturally: {[p['name'] for p in _filtered]}", history=history)
+                return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
             return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
 
     is_delivery_intent = llm_intent in ("deliver", "add_and_deliver")
@@ -1089,6 +1098,21 @@ Reply with ONLY the JSON, no explanation."""
         # ── LLM already matched the product by name, just use its index ──
         if 0 <= llm_index < len(last_products):
             top = last_products[llm_index]
+        elif llm_index == -1:
+            # Product not in current list — search by name from query
+            _conn_s = get_db(); _cur_s = _conn_s.cursor()
+            _search_emb = model.encode(query).tolist()
+            _cur_s.execute("""
+                SELECT sku, name, price, image,
+                1 - (embedding <=> %s::vector) AS similarity
+                FROM products ORDER BY embedding <=> %s::vector LIMIT 1
+            """, (_search_emb, _search_emb))
+            _row = _cur_s.fetchone()
+            _cur_s.close(); _conn_s.close()
+            if _row:
+                top = {"sku": _row[0], "name": _row[1], "price": float(_row[2]), "image": _row[3], "similarity": float(_row[4])}
+            else:
+                top = last_products[0]
         else:
             top = last_products[0]
         print(f"[ADD TO CART] Picked: {top['name']} (index={llm_index})")
