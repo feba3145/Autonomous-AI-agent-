@@ -792,7 +792,10 @@ CRITICAL RULES:
     print(f"[EARLY INTENT] {llm_intent} | index={llm_index} | address={llm_address_label}")
     # ── Filter from existing products if user refers to current list (LLM-driven) ──
     _last_prods = session_store[session_id].get("last_products", [])
-    if _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver"):
+    # Skip ref filter if user is clearly searching for something new
+    _fresh_search_words = ["show me", "i need something", "find me", "looking for", "what do you have", "do you have", "i want to see", "show me some"]
+    _is_fresh = any(w in query.lower() for w in _fresh_search_words)
+    if _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver") and not _is_fresh:
         import json as _jf, re as _re_ref
         _filter_prompt = f"""You are a shopping assistant. The customer is looking at these products:
 {[p["name"] for p in _last_prods]}
@@ -810,6 +813,7 @@ is_ref=false examples: completely new product search"""
         except:
             _fdata = {}
         print(f"[REF FILTER] is_ref={_fdata.get('is_ref')} color={_fdata.get('color')} size={_fdata.get('size')}")
+        print(f"[REF FILTER] last_prods={[p['name'] for p in _last_prods]}")
         if _fdata.get("is_ref"):
             _filtered = list(_last_prods)
             if _fdata.get("color"):
