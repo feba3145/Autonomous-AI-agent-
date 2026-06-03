@@ -824,6 +824,10 @@ is_ref=false examples: completely new product search"""
                 session_store[session_id]["last_products"] = _filtered
                 _ans = llm_chat(f"The customer wanted: {query}. These products ARE available and match their request: {[(p['name'], '$'+str(p['price'])) for p in _filtered]}. Present them positively and ask if they want to add to cart.", history=history)
                 return _save_and_return({"answer": _ans, "products": _filtered, "session_id": session_id})
+            elif _fdata.get("is_ref") and (color := _fdata.get("color")) or (size := _fdata.get("size") if _fdata.get("size") else None):
+                # Filtered but result same size as original — do fresh search with color+size
+                _extra = f"{_fdata.get('color','') or ''} {_fdata.get('size','') or ''}".strip()
+                query = f"{_extra} {query}" if _extra else query
 
     is_delivery_intent = llm_intent in ("deliver", "add_and_deliver")
     is_also_buy = llm_intent == "add_and_deliver"
