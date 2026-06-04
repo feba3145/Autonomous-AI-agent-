@@ -386,11 +386,11 @@ def extract_colors(query):
 
 
 def extract_size(query):
-    sizes = ["xs","small","medium","large","xl","xxl"]
+    size_map = {"xs":"XS","small":"S","medium":"M","large":"L","xl":"XL","xxl":"XXL","2xl":"XXL"}
     q = query.lower()
-    for s in sizes:
-        if f" {s} " in f" {q} ":
-            return s.upper()
+    for word, code in size_map.items():
+        if f" {word} " in f" {q} " or f"-{word}" in q:
+            return code
     return None
 
 
@@ -703,7 +703,8 @@ def rag_chat(payload: ChatRequest):
     if filters.get("min_price"): where_clauses.append("price >= %s"); params.append(filters["min_price"])
     color_filter = filters.get("color")
     if color_filter: where_clauses.append("name ILIKE %s"); params.append(f'%{color_filter}%')
-    if filters.get("size"): where_clauses.append("name ILIKE %s"); params.append(f'%{filters["size"]}%')
+    size_filter = extract_size(query)
+    if size_filter: where_clauses.append("name ILIKE %s"); params.append(f'%-{size_filter}-%')
     where_sql = " AND ".join(where_clauses)
     conn = get_db()
     cur = conn.cursor()
@@ -765,6 +766,7 @@ def rag_chat(payload: ChatRequest):
                 _co_cur.close(); _co_conn.close()
                 if _co_coupons:
                     session_store[session_id]["pending_checkout"] = True
+                    session_store[session_id]["available_coupons"] = [{"code":c[0],"description":c[1],"discount_type":c[2],"discount_amount":float(c[3]),"min_order":float(c[4])} for c in _co_coupons]
                     _co_total = sum(i["price"]*i["qty"] for i in _co_cart)
                     _co_list = "\n".join([f"{i+1}. {c[0]} - {c[1]}" for i,c in enumerate(_co_coupons)])
                     return _save_and_return({"answer": f"Available offers:\n{_co_list}\n\nSay: apply COUPONCODE or skip to checkout!", "products": [], "session_id": session_id, "cart": _co_cart, "cart_total": round(_co_total,2)})
@@ -1070,7 +1072,8 @@ Reply with ONLY the JSON, no explanation."""
                         postcode=resolved.get("postal_code","682001"),
                         telephone=session_store[session_id].get("telephone","9999999999"),
                         region_code="KL",
-                        country_id="IN"
+                        country_id="IN",
+                        coupon_code=session_store[session_id].get("coupon","")
                     )
                     result = place_order(req)
                     _order_items = cart_store.get(session_id, [])
@@ -1474,7 +1477,8 @@ Reply with ONLY the JSON, no explanation."""
                 postcode=addr.get("postal_code", "682001"),
                 telephone=session_store[session_id].get("telephone", "9999999999"),
                 region_code="KL",
-                country_id="IN"
+                country_id="IN",
+                coupon_code=session_store[session_id].get("coupon","")
             )
             result = place_order(req)
             _o_items = cart_store.get(session_id, [])
@@ -1493,7 +1497,8 @@ Reply with ONLY the JSON, no explanation."""
         except Exception as e:
             return _save_and_return({"answer": f"Could not place order: {str(e)}. Please try again.", "products": [], "session_id": session_id})
 
-    THRESHOLD = 0.45
+    # Lower threshold when price filter is active (user is clearly searching)
+    THRESHOLD = 0.3 if filters.get("max_price") or filters.get("min_price") else 0.45
     if llm_intent == "add_to_cart":
         pass
     elif llm_intent == "other" and history:

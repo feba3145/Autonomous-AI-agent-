@@ -19,7 +19,7 @@ class CheckoutRequest(BaseModel):
     telephone: str
     region_code: str = "KL"
     country_id: str = "IN"
-
+    coupon_code: str = ""
 @router.post("/place-order")
 def place_order(body: CheckoutRequest):
     from main import cart_store
@@ -53,6 +53,18 @@ def place_order(body: CheckoutRequest):
         json={"addressInformation": {"shipping_address": addr, "billing_address": addr, "shipping_carrier_code": "flatrate", "shipping_method_code": "flatrate"}},
         verify=False
     )
+    # Step 3b: Apply coupon if provided
+    if body.coupon_code:
+        try:
+            requests.put(
+                f"{MAGENTO_URL}/guest-carts/{cart_id}/coupons/{body.coupon_code}",
+                headers={"Content-Type": "application/json"},
+                verify=False
+            )
+            print(f"[COUPON] Applied {body.coupon_code} to cart {cart_id}")
+        except Exception as ce:
+            print(f"[COUPON ERROR] {ce}")
+
     # Step 4: Place order
     r = requests.put(
         f"{MAGENTO_URL}/guest-carts/{cart_id}/order",
