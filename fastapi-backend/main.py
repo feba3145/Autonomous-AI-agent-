@@ -813,7 +813,7 @@ CRITICAL RULES:
     # ── Filter from existing products if user refers to current list (LLM-driven) ──
     _last_prods = session_store[session_id].get("last_products", [])
     # Skip ref filter if user is clearly searching for something new
-    _fresh_search_words = ["show me", "i need something", "find me", "looking for", "what do you have", "do you have", "i want to see", "show me some"]
+    _fresh_search_words = ["show me", "i need something", "find me", "looking for", "what do you have", "do you have", "i want to see", "show me some", "sow me", "get me", "suggest me", "can you show", "i want something", "something to", "something for", "anything for", "any good"]
     _is_fresh = any(w in query.lower() for w in _fresh_search_words)
     if _last_prods and llm_intent not in ("add_to_cart", "deliver", "add_and_deliver") and not _is_fresh:
         import json as _jf, re as _re_ref
