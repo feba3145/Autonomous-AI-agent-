@@ -753,6 +753,24 @@ def rag_chat(payload: ChatRequest):
     if not saved_prods:
         products = apply_filters(products, query)
         session_store[session_id]["last_products"] = products
+    # ── Checkout shortcut — check before delivery intent ──
+    if any(kw in query.lower() for kw in CHECKOUT_KEYWORDS):
+        # Show coupons first if cart has items
+        _co_cart = cart_store.get(session_id, [])
+        if _co_cart:
+            try:
+                _co_conn = get_db(); _co_cur = _co_conn.cursor()
+                _co_cur.execute("SELECT code, description, discount_type, discount_amount, min_order_amount FROM coupons WHERE is_active=true ORDER BY discount_amount DESC LIMIT 3")
+                _co_coupons = _co_cur.fetchall()
+                _co_cur.close(); _co_conn.close()
+                if _co_coupons:
+                    session_store[session_id]["pending_checkout"] = True
+                    _co_total = sum(i["price"]*i["qty"] for i in _co_cart)
+                    _co_list = "\n".join([f"{i+1}. {c[0]} - {c[1]}" for i,c in enumerate(_co_coupons)])
+                    return _save_and_return({"answer": f"Available offers:\n{_co_list}\n\nSay: apply COUPONCODE or skip to checkout!", "products": [], "session_id": session_id, "cart": _co_cart, "cart_total": round(_co_total,2)})
+            except: pass
+        return _save_and_return({"answer": "Opening checkout!", "products": [], "session_id": session_id, "open_checkout": True})
+
     # ── Delivery + optional add-to-cart intent (fully LLM-driven) ──
     import json as _json2, re as _re3
     llm_index = 0
