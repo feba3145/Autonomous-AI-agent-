@@ -869,11 +869,11 @@ is_ref=false examples: completely new product search"""
             if session_id not in cart_store:
                 cart_store[session_id] = []
             existing = next((i for i in cart_store[session_id] if i["sku"] == top["sku"]), None)
-            if existing:
-                existing["qty"] += 1
-            else:
+            if not existing:
                 cart_store[session_id].append({"sku": top["sku"], "name": top["name"], "price": top["price"], "qty": 1})
-            print(f"[ADD+DELIVER] Added {top['name']} to cart")
+                print(f"[ADD+DELIVER] Added {top['name']} to cart")
+            else:
+                print(f"[ADD+DELIVER] {top['name']} already in cart, skipping add")
         # ── Now resolve delivery address ──
         try:
             from address_router import resolve_address, ResolveRequest
